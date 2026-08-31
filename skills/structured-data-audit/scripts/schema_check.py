@@ -1,400 +1,339 @@
 #!/usr/bin/env python3
-"""
-schema_check.py — deterministic structured-data checks for the structured-data-audit skill.
-
-Contract (matches audit-orchestrator/scripts/report_builder.py raw-finding schema):
-  Each finding is a dict:
-    {
-      "id_hint": str, "title": str, "severity": "critical"|"high"|"medium"|"low",
-      "evidence": str, "suggested_action": str,
-      "dedupe_key": "structured-data:<id_hint>",
-      "source_skill": "structured-data-audit",
-      "proactive": bool,
-    }
+"""schema_check.py — Extract and validate structured data from a web page.
 
 Usage:
-  python schema_check.py <url> [--pages <path> <path> ...] --out <raw_findings.json>
+    python schema_check.py <url>
 
-What it checks (see SKILL.md for full rationale):
-  1. JSON-LD presence          — any <script type="application/ld+json"> at all?
-  2. JSON-LD validity          — does each block parse as valid JSON?
-  3. Required top-level keys   — @context and @type present on every JSON-LD node?
-  4. Type-specific completeness — for common types (Article, Product, Organization,
-     FAQPage, BreadcrumbList, Event), are the fields Google/major consumers treat as
-     required or strongly recommended present?
-  5. Duplicate conflicting @type — same node declares contradictory unrelated types?
-  6. Microdata fallback         — if no JSON-LD found, is there at least itemscope/
-     itemtype microdata, so the page isn't emitting zero structured data at all?
-  7. Broken self-referential URLs — url/@id/image fields that are non-absolute or
-     empty strings (a common authoring mistake), checked for form only, not fetched.
-
-Design notes:
-  - Pure functions on already-parsed HTML/JSON so they're unit-testable offline.
-  - Every evidence string is a literal excerpt of the offending JSON-LD/microdata,
-    never a paraphrase.
-  - No network calls beyond fetching the page itself — image/URL fields are checked
-    for syntactic validity only, not dereferenced, keeping this skill fast and
-    within the read-only guardrail (no probing third-party asset URLs).
+Outputs JSON to stdout with keys:
+    url, json_ld, opengraph, microdata, rdfa, findings
 """
 
-import argparse
+from __future__ import annotations
+
 import json
 import re
 import sys
 from urllib.parse import urlparse
 
-import requests
-from bs4 import BeautifulSoup
+# ---------------------------------------------------------------------------
+# Extraction
+# ---------------------------------------------------------------------------
 
-SKILL_NAME = "structured-data-audit"
-USER_AGENT = "AuditBot/1.0 (+structured-data-audit skill; read-only)"
-REQUEST_TIMEOUT = 10
 
-# Minimal required/strongly-recommended fields per common schema.org type.
-# Deliberately conservative: only fields that major consumers (Google Rich
-# Results, generic LLM-agent parsers) treat as load-bearing for that type.
-TYPE_REQUIRED_FIELDS = {
-    "Article": ["headline", "datePublished"],
-    "NewsArticle": ["headline", "datePublished"],
-    "BlogPosting": ["headline", "datePublished"],
-    "Product": ["name"],
-    "Organization": ["name"],
-    "LocalBusiness": ["name", "address"],
-    "FAQPage": ["mainEntity"],
-    "BreadcrumbList": ["itemListElement"],
-    "Event": ["name", "startDate"],
-    "Recipe": ["name", "recipeIngredient", "recipeInstructions"],
+def _fetch_html(url: str, *, timeout: int = 30) -> str:
+    import requests
+
+    resp = requests.get(
+        url,
+        timeout=timeout,
+        headers={"User-Agent": "BrandAuditBot/1.0 (+https://github.com/brand-audit)"},
+    )
+    resp.raise_for_status()
+    return resp.text
+
+
+def _extract_structured(html: str, url: str) -> dict:
+    """Use extruct to pull all structured data from *html*."""
+    try:
+        import extruct
+
+        data = extruct.extract(html, base_url=url, errors="ignore",
+                               uniform=True,
+                               syntaxes=["json-ld", "opengraph", "microdata", "rdfa"])
+    except ImportError:
+        # Fallback: manual JSON-LD + OG extraction
+        data = {"json-ld": [], "opengraph": [], "microdata": [], "rdfa": []}
+        data["json-ld"] = _extract_jsonld_manual(html)
+        data["opengraph"] = _extract_og_manual(html)
+    return data
+
+
+def _extract_jsonld_manual(html: str) -> list[dict]:
+    """Fallback JSON-LD extraction when extruct is unavailable."""
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html, "html.parser")
+    items: list[dict] = []
+    for tag in soup.find_all("script", type="application/ld+json"):
+        try:
+            obj = json.loads(tag.string or "")
+            if isinstance(obj, list):
+                items.extend(obj)
+            else:
+                items.append(obj)
+        except (json.JSONDecodeError, TypeError):
+            continue
+    return items
+
+
+def _extract_og_manual(html: str) -> list[dict]:
+    """Fallback Open Graph extraction."""
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html, "html.parser")
+    og: dict[str, str] = {}
+    for meta in soup.find_all("meta"):
+        prop = meta.get("property", "") or meta.get("name", "")
+        if prop.startswith("og:"):
+            og[prop] = meta.get("content", "")
+    return [og] if og else []
+
+
+# ---------------------------------------------------------------------------
+# Validation
+# ---------------------------------------------------------------------------
+
+_IMPORTANT_SCHEMA_TYPES = {
+    "Organization", "LocalBusiness", "Corporation", "WebSite", "WebPage",
+    "Product", "Service", "Article", "BlogPosting", "FAQPage",
+    "BreadcrumbList", "Person", "Event", "Review", "AggregateRating",
+    "HowTo", "Recipe", "Course", "SoftwareApplication",
 }
 
-# Recommended-but-not-required fields, checked at lower severity.
-TYPE_RECOMMENDED_FIELDS = {
-    "Article": ["author", "image", "dateModified"],
-    "NewsArticle": ["author", "image", "dateModified"],
-    "BlogPosting": ["author", "image", "dateModified"],
-    "Product": ["image", "description", "offers"],
-    "Organization": ["url", "logo"],
-    "LocalBusiness": ["telephone"],
-    "Event": ["location", "endDate"],
-}
-
-KNOWN_SCHEMA_TYPES = set(TYPE_REQUIRED_FIELDS) | set(TYPE_RECOMMENDED_FIELDS) | {
-    "WebSite", "WebPage", "Person", "ImageObject", "Offer", "AggregateOffer",
-    "PostalAddress", "Review", "AggregateRating", "VideoObject", "HowTo",
-    "ItemList", "ListItem", "SearchAction", "ContactPoint",
-}
+_REQUIRED_OG = {"og:title", "og:type", "og:url", "og:image"}
 
 
-def _finding(id_hint, title, severity, evidence, suggested_action, proactive=False):
+def _get_types(item: dict) -> set[str]:
+    """Extract Schema.org @type(s) from a JSON-LD item."""
+    t = item.get("@type", "")
+    if isinstance(t, list):
+        return set(t)
+    return {t} if t else set()
+
+
+def _validate_jsonld(items: list[dict]) -> list[dict]:
+    """Return findings for JSON-LD quality issues."""
+    findings: list[dict] = []
+
+    if not items:
+        findings.append({
+            "title": "No JSON-LD structured data found",
+            "severity": "high",
+            "category": "structured-data",
+            "evidence": "The page contains no <script type=\"application/ld+json\"> blocks.",
+            "suggested_action": {
+                "summary": "Add JSON-LD structured data describing the primary entity on this page (e.g. Organization, Product, Article).",
+                "priority": "high",
+            },
+        })
+        return findings
+
+    # Check for important types
+    all_types: set[str] = set()
+    for item in items:
+        all_types |= _get_types(item)
+
+    has_important = all_types & _IMPORTANT_SCHEMA_TYPES
+    if not has_important:
+        findings.append({
+            "title": "JSON-LD lacks common Schema.org types",
+            "severity": "medium",
+            "category": "structured-data",
+            "evidence": f"Found @type(s): {', '.join(sorted(all_types)) or '(none)'}. None are commonly used Schema.org types.",
+            "suggested_action": {
+                "summary": "Use recognized Schema.org types such as Organization, Product, or Article to help AI systems understand page content.",
+                "priority": "medium",
+            },
+        })
+
+    # Check for missing name/description
+    for item in items:
+        types = _get_types(item)
+        if not types:
+            continue
+        if not item.get("name") and not item.get("headline"):
+            findings.append({
+                "title": f"JSON-LD {', '.join(types)} missing 'name'",
+                "severity": "medium",
+                "category": "structured-data",
+                "evidence": f"A JSON-LD block with @type {', '.join(types)} does not include a 'name' or 'headline' property.",
+                "suggested_action": {
+                    "summary": f"Add a 'name' property to the {', '.join(types)} JSON-LD block.",
+                    "priority": "medium",
+                },
+            })
+
+    # Check for @context
+    for item in items:
+        if "@type" in item and "@context" not in item:
+            findings.append({
+                "title": "JSON-LD block missing @context",
+                "severity": "medium",
+                "category": "structured-data",
+                "evidence": "A JSON-LD block specifies @type but no @context (should be 'https://schema.org').",
+                "suggested_action": {
+                    "summary": "Add '\"@context\": \"https://schema.org\"' to each JSON-LD block.",
+                    "priority": "medium",
+                },
+            })
+            break  # one finding is enough
+
+    return findings
+
+
+def _validate_og(items: list[dict]) -> list[dict]:
+    """Return findings for Open Graph metadata issues."""
+    findings: list[dict] = []
+    if not items or not any(items):
+        findings.append({
+            "title": "No Open Graph metadata found",
+            "severity": "medium",
+            "category": "structured-data",
+            "evidence": "The page contains no Open Graph <meta property=\"og:...\"> tags.",
+            "suggested_action": {
+                "summary": "Add Open Graph tags (og:title, og:type, og:url, og:image) to improve link previews on social platforms and AI citations.",
+                "priority": "medium",
+            },
+        })
+        return findings
+
+    og = items[0] if items else {}
+    present_keys = set(og.keys())
+    missing = _REQUIRED_OG - present_keys
+    if missing:
+        findings.append({
+            "title": "Missing required Open Graph tags",
+            "severity": "medium",
+            "category": "structured-data",
+            "evidence": f"Missing OG tags: {', '.join(sorted(missing))}. Present: {', '.join(sorted(present_keys))}.",
+            "suggested_action": {
+                "summary": f"Add the following Open Graph tags: {', '.join(sorted(missing))}.",
+                "priority": "medium",
+            },
+        })
+
+    # Check for empty values
+    for key, val in og.items():
+        if not val or not val.strip():
+            findings.append({
+                "title": f"Open Graph tag '{key}' is empty",
+                "severity": "low",
+                "category": "structured-data",
+                "evidence": f"The tag <meta property=\"{key}\"> is present but has an empty content attribute.",
+                "suggested_action": {
+                    "summary": f"Provide a meaningful value for the '{key}' Open Graph tag.",
+                    "priority": "low",
+                },
+            })
+
+    return findings
+
+
+def _check_meta_description(html: str) -> list[dict]:
+    """Check <title> and <meta description>."""
+    from bs4 import BeautifulSoup
+
+    findings: list[dict] = []
+    soup = BeautifulSoup(html, "html.parser")
+
+    title_tag = soup.find("title")
+    if not title_tag or not (title_tag.string or "").strip():
+        findings.append({
+            "title": "Missing or empty <title> tag",
+            "severity": "high",
+            "category": "structured-data",
+            "evidence": "The page has no <title> tag or its content is empty.",
+            "suggested_action": {
+                "summary": "Add a descriptive <title> tag (ideally 10–70 characters).",
+                "priority": "high",
+            },
+        })
+    else:
+        tlen = len(title_tag.string.strip())
+        if tlen < 10 or tlen > 70:
+            findings.append({
+                "title": f"<title> tag length outside ideal range ({tlen} chars)",
+                "severity": "low",
+                "category": "structured-data",
+                "evidence": f"Title \"{title_tag.string.strip()[:60]}\" is {tlen} chars (ideal: 10–70).",
+                "suggested_action": {
+                    "summary": "Adjust the title to be descriptive and between 10–70 characters.",
+                    "priority": "low",
+                },
+            })
+
+    meta_desc = soup.find("meta", attrs={"name": re.compile(r"description", re.I)})
+    if not meta_desc or not (meta_desc.get("content") or "").strip():
+        findings.append({
+            "title": "Missing or empty meta description",
+            "severity": "medium",
+            "category": "structured-data",
+            "evidence": "The page has no <meta name=\"description\"> or its content is empty.",
+            "suggested_action": {
+                "summary": "Add a descriptive meta description (50–160 characters) summarizing the page content.",
+                "priority": "medium",
+            },
+        })
+
+    return findings
+
+
+# ---------------------------------------------------------------------------
+# Main audit
+# ---------------------------------------------------------------------------
+
+
+def audit(url: str) -> dict:
+    """Run structured-data audit for *url*.  Returns result dict."""
+    parsed = urlparse(url)
+    if not parsed.scheme:
+        url = f"https://{url}"
+
+    try:
+        html = _fetch_html(url)
+    except Exception as exc:
+        return {
+            "url": url,
+            "json_ld": [],
+            "opengraph": [],
+            "microdata": [],
+            "rdfa": [],
+            "findings": [{
+                "title": "Could not fetch page for structured-data audit",
+                "severity": "critical",
+                "category": "structured-data",
+                "evidence": f"HTTP request to {url} failed: {exc}",
+                "suggested_action": {
+                    "summary": "Ensure the page is accessible.",
+                    "priority": "high",
+                },
+            }],
+        }
+
+    data = _extract_structured(html, url)
+    findings: list[dict] = []
+
+    findings.extend(_validate_jsonld(data.get("json-ld", [])))
+    findings.extend(_validate_og(data.get("opengraph", [])))
+    findings.extend(_check_meta_description(html))
+
+    # Microdata / RDFa — just flag absence at info level
+    if not data.get("microdata") and not data.get("rdfa"):
+        # Not a finding by itself since JSON-LD is the preferred method
+        pass
+
     return {
-        "id_hint": id_hint,
-        "title": title,
-        "severity": severity,
-        "evidence": evidence,
-        "suggested_action": suggested_action,
-        "dedupe_key": f"structured-data:{id_hint}",
-        "source_skill": SKILL_NAME,
-        "proactive": proactive,
+        "url": url,
+        "json_ld": data.get("json-ld", []),
+        "opengraph": data.get("opengraph", []),
+        "microdata": data.get("microdata", []),
+        "rdfa": data.get("rdfa", []),
+        "findings": findings,
     }
 
 
-def _short(obj, n=180):
-    s = json.dumps(obj) if not isinstance(obj, str) else obj
-    return s if len(s) <= n else s[:n] + "..."
-
-
 # ---------------------------------------------------------------------------
-# Pure check functions
+# CLI
 # ---------------------------------------------------------------------------
 
-def extract_jsonld_blocks(soup, page_url):
-    """Returns (parsed_nodes, parse_error_findings). Flattens @graph and lists."""
-    nodes = []
-    findings = []
-    scripts = soup.find_all("script", attrs={"type": "application/ld+json"})
 
-    if not scripts:
-        return nodes, findings, 0
-
-    for i, script in enumerate(scripts):
-        raw = script.string or script.get_text()
-        if not raw or not raw.strip():
-            findings.append(_finding(
-                "empty-jsonld-block", "Empty JSON-LD script block", "low",
-                f"{page_url}: <script type=\"application/ld+json\"> block #{i+1} has no content.",
-                "Remove the empty JSON-LD block or populate it with real structured data.",
-            ))
-            continue
-        try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            findings.append(_finding(
-                "invalid-jsonld-syntax", "JSON-LD block fails to parse", "high",
-                f"{page_url}: block #{i+1} raised {exc.__class__.__name__}: {exc}. "
-                f"Content starts: {_short(raw.strip(), 120)}",
-                "Fix the JSON syntax error — a malformed JSON-LD block is silently "
-                "ignored by every consumer (search engines, AI agents), so the "
-                "structured data it was meant to provide is effectively absent.",
-            ))
-            continue
-
-        # Normalize: could be a dict, a list of dicts, or a dict with @graph
-        candidates = []
-        if isinstance(parsed, list):
-            candidates = parsed
-        elif isinstance(parsed, dict) and "@graph" in parsed and isinstance(parsed["@graph"], list):
-            candidates = parsed["@graph"]
-        elif isinstance(parsed, dict):
-            candidates = [parsed]
-
-        for node in candidates:
-            if isinstance(node, dict):
-                nodes.append(node)
-
-    return nodes, findings, len(scripts)
-
-
-def check_context_and_type(nodes, page_url):
-    findings = []
-    for i, node in enumerate(nodes):
-        if "@context" not in node:
-            findings.append(_finding(
-                "missing-context", "JSON-LD node missing @context", "medium",
-                f"{page_url}: node #{i+1} ({_short(node.get('@type', 'unknown type'))}) "
-                f"has no \"@context\" key.",
-                "Add \"@context\": \"https://schema.org\" to every top-level JSON-LD "
-                "node — without it, consumers cannot reliably resolve the vocabulary "
-                "the type names refer to.",
-            ))
-        if "@type" not in node:
-            findings.append(_finding(
-                "missing-type", "JSON-LD node missing @type", "high",
-                f"{page_url}: node #{i+1} has keys {list(node.keys())[:6]} but no \"@type\".",
-                "Add an explicit \"@type\" (e.g. \"Article\", \"Product\") — without it "
-                "the node is unusable structured data; consumers can't tell what "
-                "kind of entity it describes.",
-            ))
-    return findings
-
-
-def check_type_completeness(nodes, page_url):
-    findings = []
-    for i, node in enumerate(nodes):
-        raw_type = node.get("@type")
-        if raw_type is None:
-            continue
-        types = raw_type if isinstance(raw_type, list) else [raw_type]
-
-        for t in types:
-            if not isinstance(t, str):
-                continue
-            required = TYPE_REQUIRED_FIELDS.get(t)
-            if required:
-                missing = [f for f in required if f not in node or node[f] in (None, "", [])]
-                if missing:
-                    findings.append(_finding(
-                        f"missing-required-fields-{t.lower()}",
-                        f"{t} node missing required field(s): {', '.join(missing)}",
-                        "high",
-                        f"{page_url}: node #{i+1} declares @type=\"{t}\" but is "
-                        f"missing {missing}. Present keys: {list(node.keys())[:8]}",
-                        f"Add {missing} to this {t} node — these are the fields major "
-                        f"structured-data consumers (search rich results, AI page "
-                        f"summarizers) treat as load-bearing for {t}; without them the "
-                        f"markup is present but functionally incomplete.",
-                    ))
-
-            recommended = TYPE_RECOMMENDED_FIELDS.get(t)
-            if recommended:
-                missing_rec = [f for f in recommended if f not in node or node[f] in (None, "", [])]
-                if missing_rec:
-                    findings.append(_finding(
-                        f"missing-recommended-fields-{t.lower()}",
-                        f"{t} node missing recommended field(s): {', '.join(missing_rec)}",
-                        "low",
-                        f"{page_url}: node #{i+1} (@type=\"{t}\") omits recommended "
-                        f"field(s) {missing_rec}.",
-                        f"Consider adding {missing_rec} — not required, but strengthens "
-                        f"how completely this {t} node is understood by consumers.",
-                    ))
-    return findings
-
-
-def check_unknown_types(nodes, page_url):
-    findings = []
-    unknown_seen = set()
-    for node in nodes:
-        raw_type = node.get("@type")
-        if raw_type is None:
-            continue
-        types = raw_type if isinstance(raw_type, list) else [raw_type]
-        for t in types:
-            if isinstance(t, str) and t not in KNOWN_SCHEMA_TYPES and t not in unknown_seen:
-                # Only flag if it doesn't look like a namespaced/custom extension
-                # (heuristic: schema.org types are single CamelCase words).
-                if re.fullmatch(r"[A-Z][A-Za-z0-9]*", t):
-                    unknown_seen.add(t)
-    if unknown_seen:
-        findings.append(_finding(
-            "unrecognized-schema-type", "Unrecognized schema.org @type used", "low",
-            f"{page_url}: type(s) not in this skill's known-type list: "
-            f"{sorted(unknown_seen)}.",
-            "Verify these @type values against https://schema.org/docs/full.html — "
-            "either they're a valid but less-common type this skill doesn't track "
-            "(no action needed), or a typo that silently produces unrecognized markup.",
-            proactive=True,
-        ))
-    return findings
-
-
-def check_conflicting_types(nodes, page_url):
-    """Flags a node whose @type list mixes clearly unrelated top-level entities,
-    e.g. ["Product", "Person"] — a common copy-paste authoring mistake."""
-    unrelated_groups = [
-        {"Product", "Person", "Organization", "Event", "Recipe"},
-    ]
-    findings = []
-    for i, node in enumerate(nodes):
-        raw_type = node.get("@type")
-        if not isinstance(raw_type, list) or len(raw_type) < 2:
-            continue
-        for group in unrelated_groups:
-            hits = [t for t in raw_type if t in group]
-            if len(hits) > 1:
-                findings.append(_finding(
-                    "conflicting-types", "Node declares multiple unrelated @type values",
-                    "medium",
-                    f"{page_url}: node #{i+1} declares @type={raw_type}, mixing "
-                    f"unrelated top-level entities {hits}.",
-                    "Split this into separate JSON-LD nodes, one per entity — a "
-                    "single node claiming to be both e.g. a Product and a Person "
-                    "is contradictory and consumers may discard it entirely.",
-                ))
-    return findings
-
-
-def check_no_structured_data(nodes, soup, page_url, jsonld_script_count):
-    """If there's zero JSON-LD, check for microdata as a fallback signal before
-    concluding the page has no structured data at all."""
-    if nodes or jsonld_script_count > 0:
-        return []
-    microdata_items = soup.find_all(attrs={"itemscope": True})
-    if microdata_items:
-        return []  # has microdata fallback, not a total absence
-    return [_finding(
-        "no-structured-data", "No structured data (JSON-LD or microdata) found",
-        "medium",
-        f"{page_url}: no <script type=\"application/ld+json\"> blocks and no "
-        f"itemscope/itemtype microdata attributes found anywhere in the document.",
-        "Add JSON-LD structured data appropriate to this page's content type "
-        "(Article, Product, Organization, etc.) — without it, search engines and "
-        "AI agents must infer the page's meaning from unstructured text alone.",
-    )]
-
-
-def check_broken_url_fields(nodes, page_url):
-    """Syntactic check only — does not dereference the URL over the network."""
-    url_like_keys = {"url", "image", "logo", "@id", "sameAs"}
-    findings = []
-    seen = set()
-    for node in nodes:
-        for key in url_like_keys & node.keys():
-            values = node[key] if isinstance(node[key], list) else [node[key]]
-            for v in values:
-                if not isinstance(v, str):
-                    continue
-                if key == "image" and isinstance(node[key], dict):
-                    continue
-                if v.strip() == "":
-                    finding_id = f"empty-url-field-{key}"
-                    if finding_id in seen:
-                        continue
-                    seen.add(finding_id)
-                    findings.append(_finding(
-                        finding_id, f"Empty string in \"{key}\" field", "low",
-                        f"{page_url}: a JSON-LD node has \"{key}\": \"\" (empty string).",
-                        f"Remove the \"{key}\" field entirely if there's no real value, "
-                        f"rather than leaving it as an empty string.",
-                    ))
-                elif not v.startswith(("http://", "https://", "//")) and key in ("url", "logo", "@id"):
-                    finding_id = f"non-absolute-url-{key}"
-                    if finding_id in seen:
-                        continue
-                    seen.add(finding_id)
-                    findings.append(_finding(
-                        finding_id, f"Non-absolute URL in \"{key}\" field", "medium",
-                        f"{page_url}: \"{key}\": \"{v}\" is not an absolute URL "
-                        f"(missing scheme/host).",
-                        f"Use a full absolute URL (https://...) for \"{key}\" — "
-                        f"relative paths in structured data are ambiguous to "
-                        f"off-page consumers that don't know the page's base URL.",
-                    ))
-    return findings
-
-
-# ---------------------------------------------------------------------------
-# Orchestration
-# ---------------------------------------------------------------------------
-
-def audit_page(url, session):
-    try:
-        resp = session.get(url, timeout=REQUEST_TIMEOUT, headers={"User-Agent": USER_AGENT})
-    except requests.RequestException as exc:
-        return [_finding(
-            "page-unreachable", "Page could not be fetched", "critical",
-            f"{url}: request failed with {exc.__class__.__name__}: {exc}",
-            "Confirm the URL is correct and the server is reachable; an "
-            "unreachable page blocks every structured-data check.",
-        )]
-
-    if resp.status_code >= 400:
-        return [_finding(
-            "page-error-status", f"Page returned HTTP {resp.status_code}", "critical",
-            f"{url}: server responded with status {resp.status_code}.",
-            "Fix the underlying error before structured data on this page can "
-            "be evaluated at all.",
-        )]
-
-    soup = BeautifulSoup(resp.text, "html.parser")
-    nodes, parse_findings, script_count = extract_jsonld_blocks(soup, url)
-
-    findings = list(parse_findings)
-    findings += check_no_structured_data(nodes, soup, url, script_count)
-    findings += check_context_and_type(nodes, url)
-    findings += check_type_completeness(nodes, url)
-    findings += check_conflicting_types(nodes, url)
-    findings += check_unknown_types(nodes, url)
-    findings += check_broken_url_fields(nodes, url)
-
-    return findings
-
-
-def run_audit(base_url, pages=None):
-    session = requests.Session()
-    pages = pages or [base_url]
-    all_findings = []
-    for page_url in pages:
-        all_findings.extend(audit_page(page_url, session))
-    return all_findings
-
-
-def main():
-    parser = argparse.ArgumentParser(description="structured-data-audit: schema_check.py")
-    parser.add_argument("url", help="Base URL of the site being audited")
-    parser.add_argument("--pages", nargs="*", default=None,
-                         help="Specific page URLs to sample (defaults to just the base URL)")
-    parser.add_argument("--out", required=True, help="Path to write raw findings JSON")
-    args = parser.parse_args()
-
-    try:
-        findings = run_audit(args.url, args.pages)
-    except Exception as exc:
-        print(f"structured-data-audit schema_check.py FAILED: {exc}", file=sys.stderr)
+def main() -> None:
+    if len(sys.argv) < 2:
+        print("Usage: python schema_check.py <url>", file=sys.stderr)
         sys.exit(1)
-
-    with open(args.out, "w") as f:
-        json.dump(findings, f, indent=2)
-
-    print(f"structured-data-audit: wrote {len(findings)} finding(s) to {args.out}")
+    result = audit(sys.argv[1])
+    json.dump(result, sys.stdout, indent=2, ensure_ascii=False)
+    print()
 
 
 if __name__ == "__main__":
