@@ -549,7 +549,7 @@ These are explicit Round 3 constraints. Our dependency footprint (`requests`, `b
 
 We built directly against the published Round 3 rubric so a reviewer can check each criterion in one pass:
 
-| Rubric Criterion | Where We Address It |
+| Rubric Createrion | Where We Address It |
 |---|---|
 | **Detection accuracy** | Each of the 5 specialist skills targets one named, evidence-backed mechanism from the Round-2 appendix (crawl access, rendering, structured data, extractability, corroboration, engagement) — and every check was validated against synthetic test fixtures, not just described in prose. See [Testing & Validation](#-testing--validation) |
 | **Suggested-action quality** | Every finding pairs `evidence` with a `suggested_action` that names the specific fix and its `priority`; `audit-orchestrator` also surfaces proactive, non-defect-based recommendations |
