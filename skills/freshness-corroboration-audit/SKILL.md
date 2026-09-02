@@ -1,117 +1,47 @@
 ---
 name: freshness-corroboration-audit
-description: >
-  Investigates whether important brand facts are current, consistent,
-  externally corroborated, and clearly associated with the correct entity.
-  Checks date signals, sameAs identity, social links, and content freshness.
-dependencies:
-  - freshness-corroboration-audit
+description: Checks whether the page's factual claims are current (not stale) and independently corroborated elsewhere on the web. Use this on pages making factual claims (pricing, specs, leadership, availability) that an assistant would need to trust before repeating — this is the skill that most needs the calling agent's own web-search tool, not just static page analysis.
+license: MIT
+allowed-tools: [bash, python, web_search, web_fetch]
 ---
 
 # Freshness & Corroboration Audit
 
-## Purpose
-
-Determine whether the information on a page is **current, consistent, and
-externally supported**.  Information repeated consistently across independent
-sources provides stronger support than a claim that exists in only one place.
-
-## When to Use
-
-Invoke this skill when you need to answer:
-
-* Is the content up-to-date?
-* Are there machine-readable freshness signals (dates, Last-Modified)?
-* Does the page link to authoritative external profiles?
-* Is entity identity clear and verifiable (sameAs, social profiles)?
-* Is the copyright year current?
+## When to use
+Use after the other content checks. This corresponds to Appendix D of the brief: a fact repeated
+consistently across independent sources is trusted and repeated back; a fact that lives in only one
+place, or is visibly stale, is fragile.
 
 ## Inputs
-
-| Parameter | Type   | Required | Description |
-|-----------|--------|----------|-------------|
-| `url`     | string | yes      | The target URL to audit |
-
-## Outputs
-
-A JSON array of **findings**, each containing:
-
-```json
-{
-  "id":    "FCA-001",
-  "title": "Short description of the issue",
-  "severity": "critical | high | medium | low | info",
-  "category": "freshness-corroboration",
-  "evidence": "Observable, verifiable evidence.",
-  "suggested_action": {
-    "summary": "What the site owner should do.",
-    "priority": "high | medium | low"
+- `url` (required)
+- `timeout` (optional, default 15s)
+- `--search-results <file>` (optional): a JSON file the **calling agent** produces by web-searching
+  for the brand's key claims (e.g. `"<brand> pricing"`, `"<brand> founded"`, `"<brand> address"`)
+  and recording, for each claim, which independent domains state the same fact. This skill cannot
+  perform live web search itself in a plain script context — that's the calling agent's job, using
+  whatever search tool it has (this marketplace declares `web_search`/`web_fetch` as needed tools
+  for that reason). Format:
+  ```json
+  {
+    "claims": [
+      {"claim": "founded in 2015", "corroborating_domains": ["crunchbase.com", "techcrunch.com"]},
+      {"claim": "HQ in Austin, TX", "corroborating_domains": []}
+    ]
   }
-}
-```
+  ```
 
 ## Procedure
+1. On the page itself, look for explicit freshness signals: `Last-Modified` HTTP header,
+   `<meta property="article:modified_time">`, and visible "Last updated" / "Published on" text.
+   Flag dates that are implausibly old for time-sensitive content (pricing, job listings, event
+   pages) or entirely absent from evergreen-looking claims.
+2. If the calling agent has performed corroboration research and supplied `--search-results`, score
+   each claim: 0 independent domains = fragile/unverifiable (flag), 1 = weakly supported, 2+ =
+   well-corroborated (no finding needed).
+3. If no `--search-results` file is supplied, still run step 1, and emit one informational finding
+   noting that corroboration research was not performed for this run (so the gap is visible in the
+   report rather than silently skipped).
+4. Emit findings via `scripts/freshness_check.py`.
 
-### Step 1 — Fetch the page
-
-Fetch the target URL.  Record HTTP response headers, especially:
-* `Last-Modified`
-* `ETag`
-* `Cache-Control`
-
-### Step 2 — Check HTTP freshness headers
-
-Use the helper script:
-
-```bash
-python scripts/corroborate.py <url>
-```
-
-The script checks:
-* Presence of `Last-Modified` header
-* HTTP freshness signals
-
-### Step 3 — Extract structured date information
-
-From JSON-LD:
-* `datePublished`
-* `dateModified`
-* `dateCreated`
-
-From meta tags:
-* `article:published_time`
-* `article:modified_time`
-
-Flag if no machine-readable dates are found.
-
-### Step 4 — Check copyright year
-
-Look for copyright notices in the page footer.
-* If copyright year is > 1 year behind current year → low finding.
-
-### Step 5 — Check entity identity signals
-
-Look for:
-* `sameAs` links in JSON-LD (to Wikipedia, social profiles, Wikidata)
-* Links to social media profiles on the page
-* Canonical URL tag
-
-Flag if no external identity references exist.
-
-### Step 6 — Assess corroboration potential
-
-The agent should use its judgement to assess:
-* Whether the brand name is unique or ambiguous
-* Whether visible claims (awards, certifications, statistics) could
-  benefit from external source links
-* Whether the site mentions partnerships or affiliations without linking
-  to the partner's site
-
-### Step 7 — Compile findings
-
-Collect all findings with concrete evidence.
-
-## References
-
-The script `scripts/corroborate.py` handles automated checks.
-The agent should supplement with contextual analysis.
+## Output
+Findings with `id` prefixed `FR-`, following the shared schema.

@@ -1,113 +1,36 @@
 ---
 name: engagement-audit
-description: >
-  Analyses the visitor experience after arriving at a website.  Checks page
-  performance, navigation structure, content hierarchy, calls-to-action,
-  and friction between arriving and taking meaningful action.
-dependencies:
-  - engagement-audit
+description: Checks the on-site engagement half of the problem — whether a visitor who does arrive (human or agent-driven browsing) can navigate, act, and stay: mobile viewport config, presence of clear navigation and calls-to-action, broken internal links, and page weight/load speed. Use this to cover 'why visitors bounce' rather than 'why they never arrive'.
+license: MIT
+allowed-tools: [bash, python]
 ---
 
 # Engagement Audit
 
-## Purpose
-
-Even when AI systems successfully surface a brand, the visitor still has to
-**interact with the website**.  This skill inspects the experience from
-arrival to action.
-
-## When to Use
-
-Invoke this skill when you need to answer:
-
-* Is the page fast enough to retain visitors?
-* Can visitors orient themselves quickly (navigation, landmarks)?
-* Is content hierarchy clear (headings, structure)?
-* Are there clear calls-to-action?
-* Is the page mobile-friendly?
+## When to use
+Use alongside the discoverability skills — a marketplace audit isn't complete without this half.
+This covers the on-site engagement side of the brief's Round-2 scope: keeping the visitor once they
+arrive, not just getting them to arrive.
 
 ## Inputs
-
-| Parameter | Type   | Required | Description |
-|-----------|--------|----------|-------------|
-| `url`     | string | yes      | The target URL to audit |
-
-## Outputs
-
-A JSON array of **findings**, each containing:
-
-```json
-{
-  "id":    "EA-001",
-  "title": "Short description of the issue",
-  "severity": "critical | high | medium | low | info",
-  "category": "engagement",
-  "evidence": "Observable, verifiable evidence.",
-  "suggested_action": {
-    "summary": "What the site owner should do.",
-    "priority": "high | medium | low"
-  }
-}
-```
+- `url` (required)
+- `timeout` (optional, default 15s)
+- `max_links_checked` (optional, default 8): number of sampled internal links to check for breakage.
 
 ## Procedure
+1. Check for a mobile viewport meta tag — its absence causes poor mobile rendering, a major bounce
+   driver.
+2. Check for a `<nav>` (or role="navigation") element with multiple internal links — a page with no
+   discoverable navigation traps visitors on a single page.
+3. Scan for clear calls-to-action: buttons/links with actionable text ("sign up", "contact",
+   "buy", "get started", "book", "subscribe", "download").
+4. Sample internal links found on the homepage (up to `max_links_checked`) and check their status
+   codes — broken internal links are a direct, low-effort-to-fix engagement killer.
+5. Estimate page weight (bytes transferred for the HTML document) and response latency as a rough
+   proxy for load-speed-driven bounce risk.
+6. Check for a basic 404/error-page situation: if the homepage itself is unusually thin/broken,
+   flag it (though `crawl-render-audit` also partially covers page health).
+7. Emit findings via `scripts/engagement_check.py`.
 
-### Step 1 — Fetch with timing
-
-Use the helper script:
-
-```bash
-python scripts/perf_check.py <url>
-```
-
-The script fetches the page and measures response time, HTML size, and
-resource counts.
-
-### Step 2 — Performance analysis
-
-Check:
-* **Response time**: > 3s = high, > 1s = medium
-* **HTML size**: > 500 KB = medium
-* **Resource count**: > 80 resources (scripts + CSS + images) = medium
-* **Viewport meta**: missing = high (not mobile-friendly)
-
-### Step 3 — Navigation structure
-
-Check:
-* `<nav>` element presence
-* Total link count (0 links = high severity)
-* Semantic landmarks: `<header>`, `<main>`, `<footer>`
-* Skip navigation link for accessibility
-
-### Step 4 — Content hierarchy
-
-Check:
-* H1 count (exactly 1 is ideal)
-* Heading hierarchy (no skipped levels)
-* Whether headings are descriptive
-
-### Step 5 — Calls-to-action
-
-Look for:
-* Buttons (`<button>`)
-* Form submit inputs
-* Links with action words (buy, sign up, contact, get started, etc.)
-* Forms
-
-Flag if zero CTAs are found.
-
-### Step 6 — Mobile and accessibility basics
-
-Check:
-* Viewport meta tag
-* Touch-friendly link/button sizing (if detectable from CSS)
-* Font size declarations that are not too small
-
-### Step 7 — Compile findings
-
-Collect all findings with measurable evidence (timing, counts, presence/absence).
-
-## References
-
-The script `scripts/perf_check.py` handles automated performance and
-structure checks.  The agent should supplement with contextual observations.
+## Output
+Findings with `id` prefixed `EN-`, following the shared schema.
