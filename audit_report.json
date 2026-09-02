@@ -1,0 +1,142 @@
+{
+  "site": "vivo.com",
+  "audited_at": "2026-09-02T07:36:13Z",
+  "summary": {
+    "total_findings": 11,
+    "critical": 1,
+    "high": 1,
+    "medium": 5,
+    "low": 4
+  },
+  "findings": [
+    {
+      "id": "CR-001",
+      "category": "discoverability",
+      "title": "Content likely rendered client-side only (JS render gap)",
+      "severity": "critical",
+      "evidence": "Raw HTML (before JS execution) contains only ~13 words of visible text.",
+      "suggested_action": {
+        "summary": "Server-side render (SSR) or statically pre-render the core content \u2014 product info, prices, articles \u2014 so it is present in the initial HTML response. Frameworks like Next.js/Nuxt/Remix, or a prerendering layer, fix this without abandoning the SPA (no <noscript> fallback with substantive text was found).",
+        "priority": "critical"
+      }
+    },
+    {
+      "id": "SD-001",
+      "category": "discoverability",
+      "title": "No JSON-LD structured data on the page",
+      "severity": "high",
+      "evidence": "Zero <script type=\"application/ld+json\"> blocks found.",
+      "suggested_action": {
+        "summary": "Add schema.org JSON-LD (Organization on every page at minimum; Product/Article/LocalBusiness/FAQPage where relevant) so assistants can extract facts with certainty instead of inferring them from prose.",
+        "priority": "high"
+      }
+    },
+    {
+      "id": "FE-001",
+      "category": "discoverability",
+      "title": "No H1 heading",
+      "severity": "medium",
+      "evidence": "Page has zero <h1> elements.",
+      "suggested_action": {
+        "summary": "Add exactly one clear <h1> stating the page's core topic \u2014 it's the strongest single outline signal an extractor uses.",
+        "priority": "medium"
+      }
+    },
+    {
+      "id": "FE-002",
+      "category": "discoverability",
+      "title": "Content rendered via <canvas> has no text equivalent",
+      "severity": "medium",
+      "evidence": "1 <canvas> element(s) found; canvas content is not machine-readable text.",
+      "suggested_action": {
+        "summary": "If canvas is used for charts/infographics carrying facts, add an adjacent text summary or a data table with the same information.",
+        "priority": "medium"
+      }
+    },
+    {
+      "id": "ED-001",
+      "category": "discoverability",
+      "title": "No Organization/LocalBusiness entity markup to anchor identity",
+      "severity": "medium",
+      "evidence": "No schema.org Organization or LocalBusiness JSON-LD block found.",
+      "suggested_action": {
+        "summary": "Add an Organization JSON-LD block with name, url, logo, and sameAs \u2014 without it there is no machine-readable anchor for 'who this brand is' at all.",
+        "priority": "medium"
+      }
+    },
+    {
+      "id": "EN-001",
+      "category": "engagement",
+      "title": "No clear call-to-action found",
+      "severity": "medium",
+      "evidence": "No button/link text matched common CTA phrasing (sign up, contact, buy, get started, book, subscribe, download, etc.).",
+      "suggested_action": {
+        "summary": "Add at least one prominent, specific call-to-action above the fold stating the next step you want a visitor to take.",
+        "priority": "medium"
+      }
+    },
+    {
+      "id": "EN-002",
+      "category": "engagement",
+      "title": "Slow homepage load time",
+      "severity": "medium",
+      "evidence": "Initial response took 3.2s (>3s threshold).",
+      "suggested_action": {
+        "summary": "Improve server response time and reduce render-blocking resources \u2014 slow loads are one of the most common causes of immediate bounce.",
+        "priority": "medium"
+      }
+    },
+    {
+      "id": "SD-002",
+      "category": "discoverability",
+      "title": "Incomplete Open Graph tags",
+      "severity": "low",
+      "evidence": "og:title present=False, og:description present=False.",
+      "suggested_action": {
+        "summary": "Add og:title, og:description, and og:image so link previews and summarization tools have a clean, authoritative source to quote.",
+        "priority": "low"
+      }
+    },
+    {
+      "id": "SD-003",
+      "category": "discoverability",
+      "title": "No contact phone or hours found in plain text",
+      "severity": "low",
+      "evidence": "No phone-number or opening-hours pattern detected in visible text.",
+      "suggested_action": {
+        "summary": "If applicable to this business, state phone/hours as plain text and in LocalBusiness JSON-LD \u2014 assistants answering 'is X open now / what's their number' need this in extractable form.",
+        "priority": "low"
+      }
+    },
+    {
+      "id": "FR-001",
+      "category": "discoverability",
+      "title": "No freshness/last-updated signal found",
+      "severity": "low",
+      "evidence": "No article:modified_time meta tag, visible 'last updated' text, or Last-Modified header was found.",
+      "suggested_action": {
+        "summary": "For time-sensitive pages (pricing, listings, events, docs) add a visible 'last updated' date and an article:modified_time meta tag so assistants can judge recency before repeating claims.",
+        "priority": "low"
+      }
+    },
+    {
+      "id": "FR-002",
+      "category": "discoverability",
+      "title": "Corroboration research not performed for this run",
+      "severity": "low",
+      "evidence": "No --search-results input was supplied, so cross-source agreement for this brand's key claims was not evaluated.",
+      "suggested_action": {
+        "summary": "Have the calling agent web-search 3-5 of the page's key factual claims (founding date, HQ, pricing, leadership) and re-run this check with --search-results to score corroboration.",
+        "priority": "low"
+      }
+    }
+  ],
+  "checks_run": [
+    "crawl-render-audit",
+    "structured-data-audit",
+    "fact-extractability-audit",
+    "freshness-corroboration-audit",
+    "entity-disambiguation-audit",
+    "engagement-audit"
+  ]
+}
