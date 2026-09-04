@@ -1,25 +1,14 @@
 {
-  "site": "vivo.com",
-  "audited_at": "2026-09-02T07:36:13Z",
+  "site": "linkedin.com",
+  "audited_at": "2026-09-03T06:57:19Z",
   "summary": {
-    "total_findings": 11,
-    "critical": 1,
+    "total_findings": 13,
+    "critical": 0,
     "high": 1,
-    "medium": 5,
+    "medium": 8,
     "low": 4
   },
   "findings": [
-    {
-      "id": "CR-001",
-      "category": "discoverability",
-      "title": "Content likely rendered client-side only (JS render gap)",
-      "severity": "critical",
-      "evidence": "Raw HTML (before JS execution) contains only ~13 words of visible text.",
-      "suggested_action": {
-        "summary": "Server-side render (SSR) or statically pre-render the core content \u2014 product info, prices, articles \u2014 so it is present in the initial HTML response. Frameworks like Next.js/Nuxt/Remix, or a prerendering layer, fix this without abandoning the SPA (no <noscript> fallback with substantive text was found).",
-        "priority": "critical"
-      }
-    },
     {
       "id": "SD-001",
       "category": "discoverability",
@@ -32,6 +21,39 @@
       }
     },
     {
+      "id": "CR-001",
+      "category": "discoverability",
+      "title": "No discoverable XML sitemap",
+      "severity": "medium",
+      "evidence": "/sitemap.xml returned status 200 and robots.txt has no Sitemap: line.",
+      "suggested_action": {
+        "summary": "Publish an XML sitemap (or sitemap index) covering canonical pages and reference it in robots.txt so crawlers can find and prioritize content efficiently.",
+        "priority": "medium"
+      }
+    },
+    {
+      "id": "CR-002",
+      "category": "discoverability",
+      "title": "Thin visible text in raw HTML",
+      "severity": "medium",
+      "evidence": "Only ~23 words of visible text found in the raw HTML response.",
+      "suggested_action": {
+        "summary": "Verify key facts (what the brand does, product details, pricing) are present as plain server-rendered text, not just implied by images or loaded asynchronously.",
+        "priority": "medium"
+      }
+    },
+    {
+      "id": "SD-002",
+      "category": "discoverability",
+      "title": "Missing meta description",
+      "severity": "medium",
+      "evidence": "No <meta name=\"description\"> content found.",
+      "suggested_action": {
+        "summary": "Add a concise (~150-160 char) meta description stating what the page/brand offers \u2014 assistants and search snippets draw on this.",
+        "priority": "medium"
+      }
+    },
+    {
       "id": "FE-001",
       "category": "discoverability",
       "title": "No H1 heading",
@@ -39,17 +61,6 @@
       "evidence": "Page has zero <h1> elements.",
       "suggested_action": {
         "summary": "Add exactly one clear <h1> stating the page's core topic \u2014 it's the strongest single outline signal an extractor uses.",
-        "priority": "medium"
-      }
-    },
-    {
-      "id": "FE-002",
-      "category": "discoverability",
-      "title": "Content rendered via <canvas> has no text equivalent",
-      "severity": "medium",
-      "evidence": "1 <canvas> element(s) found; canvas content is not machine-readable text.",
-      "suggested_action": {
-        "summary": "If canvas is used for charts/infographics carrying facts, add an adjacent text summary or a data table with the same information.",
         "priority": "medium"
       }
     },
@@ -67,6 +78,17 @@
     {
       "id": "EN-001",
       "category": "engagement",
+      "title": "No discoverable site navigation",
+      "severity": "medium",
+      "evidence": "<nav>/role=navigation found=False with 0 link(s) inside.",
+      "suggested_action": {
+        "summary": "Add a persistent navigation region with links to key sections (product, pricing, about, contact) so visitors \u2014 and agents browsing on a user's behalf \u2014 can orient and go deeper instead of leaving.",
+        "priority": "medium"
+      }
+    },
+    {
+      "id": "EN-002",
+      "category": "engagement",
       "title": "No clear call-to-action found",
       "severity": "medium",
       "evidence": "No button/link text matched common CTA phrasing (sign up, contact, buy, get started, book, subscribe, download, etc.).",
@@ -76,18 +98,18 @@
       }
     },
     {
-      "id": "EN-002",
+      "id": "EN-003",
       "category": "engagement",
-      "title": "Slow homepage load time",
+      "title": "No internal links found on homepage",
       "severity": "medium",
-      "evidence": "Initial response took 3.2s (>3s threshold).",
+      "evidence": "Zero same-domain links found on the homepage.",
       "suggested_action": {
-        "summary": "Improve server response time and reduce render-blocking resources \u2014 slow loads are one of the most common causes of immediate bounce.",
+        "summary": "Link to key internal pages from the homepage so visitors have somewhere to go next.",
         "priority": "medium"
       }
     },
     {
-      "id": "SD-002",
+      "id": "SD-003",
       "category": "discoverability",
       "title": "Incomplete Open Graph tags",
       "severity": "low",
@@ -98,7 +120,7 @@
       }
     },
     {
-      "id": "SD-003",
+      "id": "SD-004",
       "category": "discoverability",
       "title": "No contact phone or hours found in plain text",
       "severity": "low",
