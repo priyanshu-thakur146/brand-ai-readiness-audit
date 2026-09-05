@@ -26,6 +26,18 @@ def _finding(fid, title, severity, evidence, action_summary, priority):
     }
 
 
+def _proactive(fid, title, evidence, action_summary):
+    return {
+        "id": fid,
+        "category": "discoverability",
+        "title": title,
+        "severity": "info",
+        "evidence": evidence,
+        "suggested_action": {"summary": action_summary, "priority": "info"},
+        "proactive": True,
+    }
+
+
 def _try_parse(s):
     try:
         return dateparser.parse(s, fuzzy=True)
@@ -117,6 +129,16 @@ def run_check(url, timeout=15, search_results=None):
             "Have the calling agent web-search 3-5 of the page's key factual claims (founding "
             "date, HQ, pricing, leadership) and re-run this check with --search-results to score "
             "corroboration.", "low"))
+
+    # --- proactive suggestion (independent of any defect above) ---
+    if best_dt is not None:
+        findings.append(_proactive(
+            nid(), "Consider a machine-readable dateModified in JSON-LD",
+            f"A freshness signal was found ({source}, dated {best_dt.date()}), but it lives in "
+            "a meta tag/visible text/HTTP header rather than structured data.",
+            "In addition to what's already present, add 'dateModified' (and 'datePublished') to "
+            "the page's Article/WebPage JSON-LD block — assistants that parse structured data "
+            "directly get an unambiguous, typed timestamp instead of having to interpret text."))
 
     return findings
 

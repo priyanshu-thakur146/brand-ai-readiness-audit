@@ -1,87 +1,181 @@
 {
-  "site": "flipkart.com",
-  "audited_at": "2026-09-05T10:54:03Z",
+  "site": "www.facebook.com",
+  "audited_at": "2026-09-05T12:27:17Z",
   "summary": {
-    "total_findings": 9,
-    "critical": 0,
-    "high": 1,
-    "medium": 2,
-    "low": 6,
-    "pages_crawled": 1,
-    "total_words_analyzed": 3216,
-    "sampled_urls": [
-      "https://flipkart.com/"
-    ]
+    "pages_crawled": 18,
+    "total_findings": 19,
+    "critical": 2,
+    "high": 2,
+    "medium": 8,
+    "low": 5,
+    "proactive_suggestions": 2
   },
+  "pages_sampled": [
+    "https://facebook.com/",
+    "https://facebook.com/recover/initiate?privacy_mutation_token=eyJ0eXBlIjo1LCJjcmVhdGlvbl90aW1lIjoxNzg4NjExMTU1fQ%3D%3D&ars=facebook_login",
+    "https://facebook.com/reg?entry_point=login",
+    "https://facebook.com/reg",
+    "https://facebook.com/login",
+    "https://facebook.com/lite",
+    "https://facebook.com/watch",
+    "https://facebook.com/privacy/policy?entry_point=facebook_page_footer",
+    "https://facebook.com/privacy/center?entry_point=facebook_page_footer",
+    "https://facebook.com/about",
+    "https://facebook.com/ad_campaign/landing.php?placement=pflo&campaign_id=402047449186&nav_source=unknown&extra_1=auto",
+    "https://facebook.com/pages/create?ref_type=site_footer",
+    "https://facebook.com/careers?ref=pf",
+    "https://facebook.com/policies/cookies",
+    "https://facebook.com/help/568137493302217",
+    "https://facebook.com/policies?ref=pf",
+    "https://facebook.com/help?ref=pf",
+    "https://facebook.com/help/637205020878504"
+  ],
   "findings": [
     {
-      "id": "EN-002",
-      "category": "engagement",
-      "title": "Broken internal link(s) found",
-      "severity": "high",
-      "evidence": "8/8 sampled internal links are broken: [('https://flipkart.com/flights-travel-uhp-at-store?marketplace=FKT', 403), ('https://flipkart.com/searchsuggestion', 403), ('https://flipkart.com/account/login?ret=/', 403), ('https://flipkart.com/account/login?signup=true&ret=/', 403), ('https://flipkart.com/account/?rd=0&link=home_account', 403)]....",
+      "id": "CR-001",
+      "category": "discoverability",
+      "title": "robots.txt blocks crawlers from the entire site",
+      "severity": "critical",
+      "evidence": "robots.txt disallows '/' for user-agent(s): ['*'].",
       "suggested_action": {
-        "summary": "Fix or remove broken internal links \u2014 each one is a dead end that ends a visitor's (or a browsing agent's) session on the spot.",
+        "summary": "Remove the blanket Disallow rule (or scope it to genuinely private paths only) so AI/search crawlers can index the site at all.",
+        "priority": "critical"
+      }
+    },
+    {
+      "id": "SD-AGG-001",
+      "category": "discoverability",
+      "title": "No JSON-LD structured data on the page",
+      "severity": "critical",
+      "evidence": "17/18 pages checked show this issue (examples: ['https://facebook.com/', 'https://facebook.com/recover/initiate?privacy_mutation_token=eyJ0eXBlIjo1LCJjcmVhdGlvbl90aW1lIjoxNzg4NjExMTU1fQ%3D%3D&ars=facebook_login', 'https://facebook.com/reg?entry_point=login']). Zero <script type=\"application/ld+json\"> blocks found.",
+      "suggested_action": {
+        "summary": "Add schema.org JSON-LD (Organization on every page at minimum; Product/Article/LocalBusiness/FAQPage where relevant) so assistants can extract facts with certainty instead of inferring them from prose.",
+        "priority": "critical"
+      }
+    },
+    {
+      "id": "EN-001",
+      "category": "engagement",
+      "title": "Missing/incorrect mobile viewport meta tag",
+      "severity": "high",
+      "evidence": "viewport meta present=False, content=None.",
+      "suggested_action": {
+        "summary": "Add <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"> — without it mobile visitors get a desktop-scaled layout and bounce quickly.",
+        "priority": "high"
+      }
+    },
+    {
+      "id": "FE-AGG-001",
+      "category": "discoverability",
+      "title": "No H1 heading",
+      "severity": "high",
+      "evidence": "16/18 pages checked show this issue (examples: ['https://facebook.com/', 'https://facebook.com/recover/initiate?privacy_mutation_token=eyJ0eXBlIjo1LCJjcmVhdGlvbl90aW1lIjoxNzg4NjExMTU1fQ%3D%3D&ars=facebook_login', 'https://facebook.com/reg?entry_point=login']). Page has zero <h1> elements.",
+      "suggested_action": {
+        "summary": "Add exactly one clear <h1> stating the page's core topic — it's the strongest single outline signal an extractor uses.",
         "priority": "high"
       }
     },
     {
       "id": "CR-002",
       "category": "discoverability",
-      "title": "No discoverable XML sitemap",
+      "title": "Thin visible text in raw HTML",
       "severity": "medium",
-      "evidence": "/sitemap.xml returned status 403 and robots.txt has no Sitemap: line.",
+      "evidence": "Only ~77 words of visible text found in the raw HTML response.",
       "suggested_action": {
-        "summary": "Publish an XML sitemap (or sitemap index) covering canonical pages and reference it in robots.txt so crawlers can find and prioritize content efficiently.",
+        "summary": "Verify key facts (what the brand does, product details, pricing) are present as plain server-rendered text, not just implied by images or loaded asynchronously.",
         "priority": "medium"
       }
     },
     {
-      "id": "EN-001",
+      "id": "ED-001",
+      "category": "discoverability",
+      "title": "No Organization/LocalBusiness entity markup to anchor identity",
+      "severity": "medium",
+      "evidence": "No schema.org Organization or LocalBusiness JSON-LD block found.",
+      "suggested_action": {
+        "summary": "Add an Organization JSON-LD block with name, url, logo, and sameAs — without it there is no machine-readable anchor for 'who this brand is' at all.",
+        "priority": "medium"
+      }
+    },
+    {
+      "id": "EN-002",
       "category": "engagement",
       "title": "No discoverable site navigation",
       "severity": "medium",
       "evidence": "<nav>/role=navigation found=False with 0 link(s) inside.",
       "suggested_action": {
-        "summary": "Add a persistent navigation region with links to key sections (product, pricing, about, contact) so visitors \u2014 and agents browsing on a user's behalf \u2014 can orient and go deeper instead of leaving.",
+        "summary": "Add a persistent navigation region with links to key sections (product, pricing, about, contact) so visitors — and agents browsing on a user's behalf — can orient and go deeper instead of leaving.",
         "priority": "medium"
       }
     },
     {
-      "id": "CR-001",
-      "category": "discoverability",
-      "title": "No robots.txt found",
-      "severity": "low",
-      "evidence": "GET /robots.txt returned status 403.",
+      "id": "EN-003",
+      "category": "engagement",
+      "title": "No clear call-to-action found",
+      "severity": "medium",
+      "evidence": "No button/link text matched common CTA phrasing (sign up, contact, buy, get started, book, subscribe, download, etc.).",
       "suggested_action": {
-        "summary": "Add a robots.txt that explicitly allows crawling and points to the sitemap; its absence isn't fatal but removes a cheap, explicit signal of intent.",
-        "priority": "low"
+        "summary": "Add at least one prominent, specific call-to-action above the fold stating the next step you want a visitor to take.",
+        "priority": "medium"
       }
     },
     {
-      "id": "SD-001",
+      "id": "SD-AGG-002",
       "category": "discoverability",
-      "title": "Incomplete Open Graph tags",
-      "severity": "low",
-      "evidence": "og:title present=True, og:description present=False.",
+      "title": "Missing meta description",
+      "severity": "medium",
+      "evidence": "9/18 pages checked show this issue (examples: ['https://facebook.com/', 'https://facebook.com/recover/initiate?privacy_mutation_token=eyJ0eXBlIjo1LCJjcmVhdGlvbl90aW1lIjoxNzg4NjExMTU1fQ%3D%3D&ars=facebook_login', 'https://facebook.com/reg?entry_point=login']). No <meta name=\"description\"> content found.",
       "suggested_action": {
-        "summary": "Add og:title, og:description, and og:image so link previews and summarization tools have a clean, authoritative source to quote.",
-        "priority": "low"
+        "summary": "Add a concise (~150-160 char) meta description stating what the page/brand offers — assistants and search snippets draw on this.",
+        "priority": "medium"
       }
     },
     {
-      "id": "FE-001",
+      "id": "SD-AGG-004",
       "category": "discoverability",
-      "title": "Multiple H1 headings",
-      "severity": "low",
-      "evidence": "Page has 2 <h1> elements.",
+      "title": "No contact phone or hours found in plain text",
+      "severity": "medium",
+      "evidence": "17/18 pages checked show this issue (examples: ['https://facebook.com/', 'https://facebook.com/recover/initiate?privacy_mutation_token=eyJ0eXBlIjo1LCJjcmVhdGlvbl90aW1lIjoxNzg4NjExMTU1fQ%3D%3D&ars=facebook_login', 'https://facebook.com/reg?entry_point=login']). No phone-number or opening-hours pattern detected in visible text.",
       "suggested_action": {
-        "summary": "Use a single <h1> per page and demote the rest to <h2>/<h3> to keep the outline unambiguous.",
-        "priority": "low"
+        "summary": "If applicable to this business, state phone/hours as plain text and in LocalBusiness JSON-LD — assistants answering 'is X open now / what's their number' need this in extractable form.",
+        "priority": "medium"
+      }
+    },
+    {
+      "id": "SD-AGG-005",
+      "category": "discoverability",
+      "title": "JSON-LD block missing schema.org context",
+      "severity": "medium",
+      "evidence": "4/18 pages checked show this issue (examples: ['https://facebook.com/about', 'https://facebook.com/about', 'https://facebook.com/about']). @context = '' does not reference schema.org.",
+      "suggested_action": {
+        "summary": "Set \"@context\": \"https://schema.org\" so parsers recognize the vocabulary.",
+        "priority": "medium"
+      }
+    },
+    {
+      "id": "FE-AGG-005",
+      "category": "discoverability",
+      "title": "Majority of images have no alt text",
+      "severity": "medium",
+      "evidence": "1/18 pages checked show this issue (examples: ['https://facebook.com/lite']). 4/4 <img> elements have empty or missing alt attributes.",
+      "suggested_action": {
+        "summary": "Add descriptive alt text to informational images (not decorative ones) so any facts conveyed visually (diagrams, infographics, screenshots with data) have a text equivalent a machine can read.",
+        "priority": "medium"
       }
     },
     {
       "id": "FR-001",
+      "category": "discoverability",
+      "title": "No freshness/last-updated signal found",
+      "severity": "low",
+      "evidence": "No article:modified_time meta tag, visible 'last updated' text, or Last-Modified header was found.",
+      "suggested_action": {
+        "summary": "For time-sensitive pages (pricing, listings, events, docs) add a visible 'last updated' date and an article:modified_time meta tag so assistants can judge recency before repeating claims.",
+        "priority": "low"
+      }
+    },
+    {
+      "id": "FR-002",
       "category": "discoverability",
       "title": "Corroboration research not performed for this run",
       "severity": "low",
@@ -92,34 +186,81 @@
       }
     },
     {
-      "id": "PRO-001",
+      "id": "SD-AGG-003",
       "category": "discoverability",
-      "title": "Proactive Opportunity: Add Speakable Specification for Voice AI Assistants",
+      "title": "Incomplete Open Graph tags",
       "severity": "low",
-      "evidence": "Site contains substantial readable content (~3216 words analyzed), but lacks schema.org/Speakable specification.",
+      "evidence": "13/18 pages checked show this issue (examples: ['https://facebook.com/', 'https://facebook.com/recover/initiate?privacy_mutation_token=eyJ0eXBlIjo1LCJjcmVhdGlvbl90aW1lIjoxNzg4NjExMTU1fQ%3D%3D&ars=facebook_login', 'https://facebook.com/reg?entry_point=login']). og:title present=False, og:description present=False.",
       "suggested_action": {
-        "summary": "Add 'speakable' JSON-LD markup or CSS selector attributes pointing to your primary 1-2 sentence brand summary \u2014 this guides voice assistants (ChatGPT Voice, Siri, Google Assistant) to quote exact text.",
+        "summary": "Add og:title, og:description, and og:image so link previews and summarization tools have a clean, authoritative source to quote.",
         "priority": "low"
       }
     },
     {
-      "id": "PRO-002",
+      "id": "FE-AGG-004",
       "category": "discoverability",
-      "title": "Proactive Opportunity: Link Entity to Wikidata/Wikipedia via sameAs",
+      "title": "Heading levels skip a level",
       "severity": "low",
-      "evidence": "No official Wikidata or Wikipedia sameAs identity link detected in Organization markup for flipkart.com.",
+      "evidence": "3/18 pages checked show this issue (examples: ['https://facebook.com/lite', 'https://facebook.com/about', 'https://facebook.com/policies?ref=pf']). Heading sequence jumps by more than one level at least once (sequence found: [2, 4, 4, 4]).",
       "suggested_action": {
-        "summary": "Include official Wikidata and Wikipedia URLs inside the Organization sameAs JSON-LD array for 'flipkart.com' to eliminate entity ambiguity across LLM knowledge bases.",
+        "summary": "Keep heading levels sequential (h1 > h2 > h3, no skips) so tools that build an outline from headings don't misjudge structure.",
         "priority": "low"
       }
+    },
+    {
+      "id": "FE-AGG-006",
+      "category": "discoverability",
+      "title": "High proportion of page text is nav/footer/boilerplate",
+      "severity": "low",
+      "evidence": "2/18 pages checked show this issue (examples: ['https://facebook.com/lite', 'https://facebook.com/pages/create?ref_type=site_footer']). Estimated 77% of visible text sits in nav/footer/menu/banner-like containers.",
+      "suggested_action": {
+        "summary": "Trim repeated navigation/footer/cookie text relative to main content, or ensure the main content region is marked with <main>/semantic tags so extractors can weight it appropriately.",
+        "priority": "low"
+      }
+    },
+    {
+      "id": "FE-AGG-002",
+      "category": "discoverability",
+      "title": "No <main> landmark element",
+      "severity": "info",
+      "evidence": "18/18 pages checked show this issue (examples: ['https://facebook.com/', 'https://facebook.com/recover/initiate?privacy_mutation_token=eyJ0eXBlIjo1LCJjcmVhdGlvbl90aW1lIjoxNzg4NjExMTU1fQ%3D%3D&ars=facebook_login', 'https://facebook.com/reg?entry_point=login']). No <main> tag found; the primary-content region isn't explicitly marked.",
+      "suggested_action": {
+        "summary": "Wrap the core content in a <main> element (even if boilerplate ratio is currently fine) — it's a cheap, unambiguous signal for extractors and accessibility tools to weight the right region as the page's substance, and protects against boilerplate creeping in as the page grows.",
+        "priority": "info"
+      },
+      "proactive": true
+    },
+    {
+      "id": "FE-AGG-003",
+      "category": "discoverability",
+      "title": "Consider an explicit one-line summary near the top",
+      "severity": "info",
+      "evidence": "9/18 pages checked show this issue (examples: ['https://facebook.com/', 'https://facebook.com/reg?entry_point=login', 'https://facebook.com/reg']). Opening content passed the filler/concrete check (68 words in the lead), but no distinct single-sentence summary/TL;DR was specifically detected.",
+      "suggested_action": {
+        "summary": "Even with concrete opening content, adding one explicit summary sentence right after the H1 (e.g. 'X is a Y that does Z for W') gives assistants a ready-made, quotable answer for 'what is this' style questions instead of having to synthesize one.",
+        "priority": "info"
+      },
+      "proactive": true
+    }
+  ],
+  "proactive_suggestions": [
+    {
+      "id": "FE-AGG-002",
+      "title": "No <main> landmark element",
+      "suggested_action": "Wrap the core content in a <main> element (even if boilerplate ratio is currently fine) — it's a cheap, unambiguous signal for extractors and accessibility tools to weight the right region as the page's substance, and protects against boilerplate creeping in as the page grows."
+    },
+    {
+      "id": "FE-AGG-003",
+      "title": "Consider an explicit one-line summary near the top",
+      "suggested_action": "Even with concrete opening content, adding one explicit summary sentence right after the H1 (e.g. 'X is a Y that does Z for W') gives assistants a ready-made, quotable answer for 'what is this' style questions instead of having to synthesize one."
     }
   ],
   "checks_run": [
     "crawl-render-audit",
-    "structured-data-audit",
-    "fact-extractability-audit",
     "freshness-corroboration-audit",
     "entity-disambiguation-audit",
-    "engagement-audit"
+    "engagement-audit",
+    "structured-data-audit",
+    "fact-extractability-audit"
   ]
 }

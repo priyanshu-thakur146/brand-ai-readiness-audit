@@ -36,6 +36,23 @@ def _finding(fid, title, severity, evidence, action_summary, priority):
     }
 
 
+def _proactive(fid, title, evidence, action_summary):
+    """
+    A suggestion offered even though no defect was found — proactive
+    improvements the brief explicitly asks for. Always severity 'info' so
+    these never get counted as problems in the summary.
+    """
+    return {
+        "id": fid,
+        "category": "discoverability",
+        "title": title,
+        "severity": "info",
+        "evidence": evidence,
+        "suggested_action": {"summary": action_summary, "priority": "info"},
+        "proactive": True,
+    }
+
+
 def run_check(url, timeout=15):
     findings = []
     parsed = up.urlparse(url)
@@ -195,9 +212,25 @@ def run_check(url, timeout=15):
             nid(), "Homepage unreachable", "critical", f"Request error fetching {url}: {e}",
             "Ensure the site resolves over HTTPS and responds without connection errors — an "
             "unreachable site is invisible to every crawler and AI fetcher.", "critical"))
-        return {"findings": findings, "pages_crawled": 1, "words_analyzed": 0}
 
-    return {"findings": findings, "pages_crawled": 1, "words_analyzed": word_count}
+    # --- proactive suggestion (independent of any defect above) ---
+    # llms.txt is an emerging (not yet universal) convention — a plain-text file
+    # at the site root giving AI agents a curated map of the most important
+    # pages/facts, the same way robots.txt/sitemap.xml serve traditional crawlers.
+    try:
+        r = _get(up.urljoin(origin, "/llms.txt"), timeout)
+        if r.status_code != 200:
+            findings.append(_proactive(
+                nid("CR-P"), "No llms.txt found (emerging AI-crawler convention)",
+                f"GET /llms.txt returned status {r.status_code}.",
+                "Consider publishing an llms.txt at the site root — a short, plain-text index of "
+                "the site's key pages and facts written specifically for AI agents. It's not yet "
+                "a universal standard, but costs little to add and gives assistants a direct, "
+                "curated entry point instead of relying on inference."))
+    except requests.RequestException:
+        pass
+
+    return findings
 
 
 if __name__ == "__main__":

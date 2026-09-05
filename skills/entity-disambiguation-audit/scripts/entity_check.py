@@ -34,6 +34,18 @@ def _finding(fid, title, severity, evidence, action_summary, priority):
     }
 
 
+def _proactive(fid, title, evidence, action_summary):
+    return {
+        "id": fid,
+        "category": "discoverability",
+        "title": title,
+        "severity": "info",
+        "evidence": evidence,
+        "suggested_action": {"summary": action_summary, "priority": "info"},
+        "proactive": True,
+    }
+
+
 def _extract_org_jsonld(soup):
     for s in soup.find_all("script", attrs={"type": "application/ld+json"}):
         try:
@@ -153,6 +165,18 @@ def run_check(url, timeout=15, search_results=None):
                 f"JSON-LD telephone={jsonld_phone!r} vs footer text contains {footer_phone_match.group(1)!r}.",
                 "Reconcile the phone number so structured data and visible text agree — "
                 "inconsistent NAP data is a classic corroboration/trust red flag.", "medium"))
+
+    # --- proactive suggestion (independent of any defect above) ---
+    if disambiguating_links:
+        missing_hosts = [h for h in DISAMBIGUATING_HOSTS if not any(h in u for u in disambiguating_links)]
+        if missing_hosts:
+            findings.append(_proactive(
+                nid(), "sameAs coverage could be broadened",
+                f"Disambiguating sameAs links present ({disambiguating_links}), but none reference: "
+                f"{missing_hosts}.",
+                "Beyond what's already linked, add sameAs entries for the remaining well-known "
+                "profile types where they exist for this brand — more independent, authoritative "
+                "anchors make entity resolution more robust, not just 'present or absent'."))
 
     return findings
 

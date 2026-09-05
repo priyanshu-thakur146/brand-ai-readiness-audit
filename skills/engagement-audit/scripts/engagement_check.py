@@ -26,6 +26,18 @@ def _finding(fid, title, severity, evidence, action_summary, priority):
     }
 
 
+def _proactive(fid, title, evidence, action_summary):
+    return {
+        "id": fid,
+        "category": "engagement",
+        "title": title,
+        "severity": "info",
+        "evidence": evidence,
+        "suggested_action": {"summary": action_summary, "priority": "info"},
+        "proactive": True,
+    }
+
+
 def run_check(url, timeout=15, max_links_checked=8):
     findings = []
     n = 0
@@ -135,6 +147,18 @@ def run_check(url, timeout=15, max_links_checked=8):
             f"Homepage HTML document is {page_bytes / 1_000_000:.1f} MB.",
             "Audit for inlined base64 assets, unminified bundles, or unnecessary embedded data in "
             "the initial HTML document; move large assets to lazy-loaded resources.", "low"))
+
+    # --- proactive suggestion (independent of any defect above) ---
+    has_breadcrumb_schema = "breadcrumblist" in r.text.lower()
+    breadcrumb_nav = soup.find(attrs={"aria-label": re.compile("breadcrumb", re.I)})
+    if nav and len(nav_links) >= 2 and not breadcrumb_nav and not has_breadcrumb_schema:
+        findings.append(_proactive(
+            nid(), "No breadcrumb navigation detected",
+            "Primary navigation is present and populated, but no breadcrumb trail "
+            "(aria-label='breadcrumb' or BreadcrumbList schema) was found.",
+            "On top of existing navigation, add a breadcrumb trail (with BreadcrumbList JSON-LD) "
+            "on deeper pages — it helps both visitors and browsing agents orient within the site "
+            "hierarchy, and gives assistants a clean structural signal for how pages relate."))
 
     return findings
 

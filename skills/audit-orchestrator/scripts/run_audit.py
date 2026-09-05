@@ -3,243 +3,813 @@
 audit-orchestrator entrypoint.
 
 Runs every sub-skill in the brand-ai-readiness-audit marketplace against a
-target URL and composes their findings into a single audit report matching
-the contest's required schema.
+target site and composes their findings into a single audit report.
+
+Site-level checks:
+    - crawl-render-audit
+    - freshness-corroboration-audit
+    - entity-disambiguation-audit
+    - engagement-audit
+
+Page-level checks:
+    - structured-data-audit
+    - fact-extractability-audit
+
+Page-level checks run across a sample of pages discovered by:
+    - robots.txt sitemap declarations
+    - sitemap.xml
+    - sitemap indexes
+    - homepage links
+
+No JavaScript rendering is performed by page discovery.
 
 Usage:
-    python run_audit.py <url> [--output report.json]
-                              [--search-results search_results.json]
-                              [--max-links 8] [--timeout 15]
-
-`search_results.json` (optional) feeds the freshness-corroboration-audit and
-entity-disambiguation-audit skills with web-search evidence the calling agent
-gathered (see those skills' SKILL.md). Shape:
-{
-  "freshness": {"claims": [{"claim": "...", "corroborating_domains": [...]}]},
-  "entity": {"name_collision_count": 0, "examples": []}
-}
+    python run_audit.py <url>
+    python run_audit.py <url> --output report.json
+    python run_audit.py <url> --max-pages 10
+    python run_audit.py <url> --max-links 8
+    python run_audit.py <url> --timeout 15
 """
-import sys
-import os
-import json
+
 import argparse
 import importlib.util
+import json
+import os
+import sys
 import urllib.parse as up
 from datetime import datetime, timezone
 
-SKILLS_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
+import requests
 
-SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
 
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+
+SKILLS_DIR = os.path.normpath(
+    os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "..",
+    )
+)
+
+SEVERITY_ORDER = {
+    "critical": 0,
+    "high": 1,
+    "medium": 2,
+    "low": 3,
+    "info": 4,
+}
+
+
+# ---------------------------------------------------------------------------
+# Dynamic skill loader
+# ---------------------------------------------------------------------------
 
 def _load(skill_name, script_name):
-    path = os.path.join(SKILLS_DIR, skill_name, "scripts", script_name)
-    spec = importlib.util.spec_from_file_location(f"{skill_name}_{script_name}", path)
+    path = os.path.join(
+        SKILLS_DIR,
+        skill_name,
+        "scripts",
+        script_name,
+    )
+
+    if not os.path.isfile(path):
+        raise FileNotFoundError(
+            f"Skill script not found: {path}"
+        )
+
+    spec = importlib.util.spec_from_file_location(
+        f"{skill_name}_{script_name}",
+        path,
+    )
+
+    if spec is None or spec.loader is None:
+        raise ImportError(
+            f"Unable to load skill: {skill_name}/{script_name}"
+        )
+
     mod = importlib.util.module_from_spec(spec)
+
     spec.loader.exec_module(mod)
+
     return mod
 
 
-def _run_safely(check_id, fn, *args, **kwargs):
+# ---------------------------------------------------------------------------
+# Safe execution
+# ---------------------------------------------------------------------------
+
+def _run_safely(fn, *args, **kwargs):
+    """
+    Run a check without allowing one failed skill to kill the entire audit.
+    """
+
     try:
-        res = fn(*args, **kwargs)
-        if isinstance(res, dict):
-            return res.get("findings", []), res.get("pages_crawled", 1), res.get("words_analyzed", 0), res.get("sampled_urls", []), None
-        elif isinstance(res, list):
-            return res, 1, 0, [], None
-        return [], 1, 0, [], None
-    except Exception as e:  # noqa: BLE001 - deliberately broad so one bad check doesn't kill the audit
-        return [], 0, 0, [], str(e)
+        result = fn(*args, **kwargs)
+
+        if result is None:
+            result = []
+
+        return result, None
+
+    except Exception as exc:  # noqa: BLE001
+        return [], str(exc)
 
 
-def run_full_audit(url, timeout=15, max_links=8, search_results=None, output_path=None):
+# ---------------------------------------------------------------------------
+# Error finding
+# ---------------------------------------------------------------------------
+
+def _error_finding(skill_id, error):
+    return {
+        "id": f"{skill_id[:2].upper()}-ERR",
+        "category": "meta",
+        "title": f"{skill_id} check failed to complete",
+        "severity": "medium",
+        "evidence": (
+            f"Unhandled error while running {skill_id}: {error}"
+        ),
+        "suggested_action": {
+            "summary": (
+                f"Re-run the {skill_id} check and investigate the error "
+                "before trusting the completeness of this audit."
+            ),
+            "priority": "medium",
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# Main audit
+# ---------------------------------------------------------------------------
+
+def run_full_audit(
+    url,
+    timeout=15,
+    max_links=8,
+    max_pages=10,
+    search_results=None,
+    output_path=None,
+):
+
     search_results = search_results or {}
 
-    crawl_mod = _load("crawl-render-audit", "crawl_render_check.py")
-    sd_mod = _load("structured-data-audit", "structured_data_check.py")
-    fe_mod = _load("fact-extractability-audit", "fact_extractability_check.py")
-    fr_mod = _load("freshness-corroboration-audit", "freshness_check.py")
-    ed_mod = _load("entity-disambiguation-audit", "entity_check.py")
-    en_mod = _load("engagement-audit", "engagement_check.py")
+    # ---------------------------------------------------------
+    # Load skills
+    # ---------------------------------------------------------
+
+    crawl_mod = _load(
+        "crawl-render-audit",
+        "crawl_render_check.py",
+    )
+
+    sd_mod = _load(
+        "structured-data-audit",
+        "structured_data_check.py",
+    )
+
+    fe_mod = _load(
+        "fact-extractability-audit",
+        "fact_extractability_check.py",
+    )
+
+    fr_mod = _load(
+        "freshness-corroboration-audit",
+        "freshness_check.py",
+    )
+
+    ed_mod = _load(
+        "entity-disambiguation-audit",
+        "entity_check.py",
+    )
+
+    en_mod = _load(
+        "engagement-audit",
+        "engagement_check.py",
+    )
+
+    disc_mod = _load(
+        "audit-orchestrator",
+        "page_discovery.py",
+    )
 
     all_findings = []
     checks_run = []
     check_errors = []
-    max_pages_crawled = 1
-    total_words_analyzed = 0
-    all_sampled_urls = [url]
 
-    checks = [
-        ("crawl-render-audit", crawl_mod.run_check, {"timeout": timeout}),
-        ("structured-data-audit", sd_mod.run_check, {"timeout": timeout}),
-        ("fact-extractability-audit", fe_mod.run_check, {"timeout": timeout}),
-        ("freshness-corroboration-audit", fr_mod.run_check,
-         {"timeout": timeout, "search_results": search_results.get("freshness")}),
-        ("entity-disambiguation-audit", ed_mod.run_check,
-         {"timeout": timeout, "search_results": search_results.get("entity")}),
-        ("engagement-audit", en_mod.run_check, {"timeout": timeout, "max_links_checked": max_links}),
+    # ---------------------------------------------------------
+    # 1. Site-level checks
+    # ---------------------------------------------------------
+
+    site_checks = [
+        (
+            "crawl-render-audit",
+            crawl_mod.run_check,
+            {
+                "timeout": timeout,
+            },
+        ),
+        (
+            "freshness-corroboration-audit",
+            fr_mod.run_check,
+            {
+                "timeout": timeout,
+                "search_results": search_results.get(
+                    "freshness"
+                ),
+            },
+        ),
+        (
+            "entity-disambiguation-audit",
+            ed_mod.run_check,
+            {
+                "timeout": timeout,
+                "search_results": search_results.get(
+                    "entity"
+                ),
+            },
+        ),
+        (
+            "engagement-audit",
+            en_mod.run_check,
+            {
+                "timeout": timeout,
+                "max_links_checked": max_links,
+            },
+        ),
     ]
 
-    for skill_id, fn, kwargs in checks:
-        findings, pages_count, words_count, sampled_urls, error = _run_safely(skill_id, fn, url, **kwargs)
+    for skill_id, fn, kwargs in site_checks:
+
         checks_run.append(skill_id)
-        if pages_count > max_pages_crawled:
-            max_pages_crawled = pages_count
-        if words_count > total_words_analyzed:
-            total_words_analyzed = words_count
-        if sampled_urls:
-            for s_url in sampled_urls:
-                if s_url not in all_sampled_urls:
-                    all_sampled_urls.append(s_url)
+
+        findings, error = _run_safely(
+            fn,
+            url,
+            **kwargs,
+        )
 
         if error:
-            check_errors.append({"skill": skill_id, "error": error})
-            all_findings.append({
-                "id": f"{skill_id[:2].upper()}-ERR",
-                "category": "meta",
-                "title": f"{skill_id} check failed to complete",
-                "severity": "medium",
-                "evidence": f"Unhandled error while running {skill_id}: {error}",
-                "suggested_action": {
-                    "summary": f"Re-run the {skill_id} check; investigate the error before trusting "
-                                "the completeness of this audit for that concern area.",
-                    "priority": "medium",
-                },
-            })
+
+            check_errors.append(
+                {
+                    "skill": skill_id,
+                    "error": error,
+                }
+            )
+
+            all_findings.append(
+                _error_finding(
+                    skill_id,
+                    error,
+                )
+            )
+
         else:
-            all_findings.extend(findings)
 
-    site = up.urlparse(url).netloc or url
+            if isinstance(findings, list):
+                all_findings.extend(findings)
 
-    # Dynamic Proactive Recommendations Engine (based on actual website signals)
-    proactive_n = 0
-    def pro_id():
-        nonlocal proactive_n
-        proactive_n += 1
-        return f"PRO-{proactive_n:03d}"
+    # ---------------------------------------------------------
+    # 2. Discover pages
+    # ---------------------------------------------------------
 
-    # 1. Dynamic Breadcrumb Opportunity
-    deep_paths = [up.urlparse(u).path for u in all_sampled_urls if len(up.urlparse(u).path.strip("/").split("/")) >= 2]
-    has_breadcrumb_finding = any("breadcrumb" in f.get("title", "").lower() or "breadcrumb" in f.get("evidence", "").lower() for f in all_findings)
-    if deep_paths and not has_breadcrumb_finding:
-        sample_path = deep_paths[0]
-        all_findings.append({
-            "id": pro_id(),
-            "category": "discoverability",
-            "title": "Proactive Opportunity: Implement BreadcrumbList JSON-LD for Site Hierarchy",
-            "severity": "low",
-            "evidence": f"Deep subpages detected (e.g. '{sample_path}'), but no schema.org BreadcrumbList markup was found across {len(all_sampled_urls)} sampled URLs.",
-            "suggested_action": {
-                "summary": f"Add BreadcrumbList JSON-LD schema on subpages like '{sample_path}' — this establishes explicit site architecture relationships for crawlers and AI search agents.",
-                "priority": "low"
-            }
-        })
+    pages = [url]
 
-    # 2. Dynamic Voice AI / Speakable Specification Opportunity
-    if total_words_analyzed > 300:
-        has_speakable = any("speakable" in f.get("evidence", "").lower() for f in all_findings)
-        if not has_speakable:
-            all_findings.append({
-                "id": pro_id(),
-                "category": "discoverability",
-                "title": "Proactive Opportunity: Add Speakable Specification for Voice AI Assistants",
-                "severity": "low",
-                "evidence": f"Site contains substantial readable content (~{total_words_analyzed} words analyzed), but lacks schema.org/Speakable specification.",
-                "suggested_action": {
-                    "summary": "Add 'speakable' JSON-LD markup or CSS selector attributes pointing to your primary 1-2 sentence brand summary — this guides voice assistants (ChatGPT Voice, Siri, Google Assistant) to quote exact text.",
-                    "priority": "low"
+    try:
+
+        homepage_resp, used_fallback_ua = (
+            disc_mod._get_with_fallback(
+                url,
+                timeout,
+                min_bytes=500,
+            )
+        )
+
+        if homepage_resp is None:
+
+            raise requests.RequestException(
+                "Unable to fetch homepage."
+            )
+
+        homepage_html = homepage_resp.text or ""
+
+        pages = disc_mod.discover_pages(
+            url,
+            homepage_html,
+            max_pages=max_pages,
+            timeout=timeout,
+        )
+
+        # Make sure homepage always exists.
+        if not pages:
+            pages = [url]
+
+        # -----------------------------------------------------
+        # Discovery diagnostic
+        # -----------------------------------------------------
+
+        if len(pages) == 1:
+
+            fallback_message = ""
+
+            if used_fallback_ua:
+                fallback_message = (
+                    " even after retrying with a browser User-Agent"
+                )
+
+            check_errors.append(
+                {
+                    "skill": "page-discovery",
+                    "error": (
+                        "Only the homepage was audited — no additional "
+                        "same-domain pages were discovered through "
+                        "robots.txt/sitemap.xml/sitemap indexes or "
+                        f"homepage links{fallback_message}. "
+                        "This audit does not execute JavaScript, so "
+                        "JS-generated links cannot be discovered by this "
+                        "static page-discovery module."
+                    ),
                 }
-            })
+            )
 
-    # 3. Dynamic Site Search Action Opportunity
-    if len(all_sampled_urls) >= 3:
-        has_search_action = any("searchaction" in f.get("evidence", "").lower() or "potentialaction" in f.get("evidence", "").lower() for f in all_findings)
-        if not has_search_action:
-            all_findings.append({
-                "id": pro_id(),
-                "category": "discoverability",
-                "title": "Proactive Opportunity: Add SearchAction PotentialAction Schema",
-                "severity": "low",
-                "evidence": f"Multi-page site structure detected ({len(all_sampled_urls)} sampled pages), but no WebSite SearchAction schema was found.",
-                "suggested_action": {
-                    "summary": f"Add WebSite schema with potentialAction (SearchAction) pointing to '{site}/search?q={{search_term_string}}' to enable direct AI in-site query delegation.",
-                    "priority": "low"
-                }
-            })
+    except requests.RequestException as exc:
 
-    # 4. Dynamic Wikidata Identity Anchor Opportunity
-    has_wikidata = any("sameas" in f.get("title", "").lower() or "wikidata" in f.get("evidence", "").lower() for f in all_findings)
-    if not has_wikidata:
-        all_findings.append({
-            "id": pro_id(),
-            "category": "discoverability",
-            "title": "Proactive Opportunity: Link Entity to Wikidata/Wikipedia via sameAs",
-            "severity": "low",
-            "evidence": f"No official Wikidata or Wikipedia sameAs identity link detected in Organization markup for {site}.",
-            "suggested_action": {
-                "summary": f"Include official Wikidata and Wikipedia URLs inside the Organization sameAs JSON-LD array for '{site}' to eliminate entity ambiguity across LLM knowledge bases.",
-                "priority": "low"
+        check_errors.append(
+            {
+                "skill": "page-discovery",
+                "error": str(exc),
             }
-        })
+        )
 
-    all_findings.sort(key=lambda f: SEVERITY_ORDER.get(f.get("severity", "low"), 3))
+    except Exception as exc:
 
-    counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
-    for f in all_findings:
-        sev = f.get("severity", "low")
-        if sev in counts:
-            counts[sev] += 1
+        check_errors.append(
+            {
+                "skill": "page-discovery",
+                "error": (
+                    f"Unexpected page-discovery error: {exc}"
+                ),
+            }
+        )
+
+    # ---------------------------------------------------------
+    # 3. Page-level checks
+    # ---------------------------------------------------------
+
+    page_level_checks = [
+        (
+            "structured-data-audit",
+            sd_mod.run_check,
+        ),
+        (
+            "fact-extractability-audit",
+            fe_mod.run_check,
+        ),
+    ]
+
+    for skill_id, fn in page_level_checks:
+
+        checks_run.append(skill_id)
+
+        grouped = {}
+
+        pages_checked = 0
+
+        for page_url in pages:
+
+            findings, error = _run_safely(
+                fn,
+                page_url,
+                timeout=timeout,
+            )
+
+            if error:
+
+                check_errors.append(
+                    {
+                        "skill": skill_id,
+                        "page": page_url,
+                        "error": error,
+                    }
+                )
+
+                continue
+
+            pages_checked += 1
+
+            if not isinstance(findings, list):
+                continue
+
+            for finding in findings:
+
+                if not isinstance(finding, dict):
+                    continue
+
+                title = finding.get(
+                    "title",
+                    "Unnamed finding",
+                )
+
+                bucket = grouped.setdefault(
+                    title,
+                    {
+                        "finding": finding,
+                        "pages": [],
+                    },
+                )
+
+                bucket["pages"].append(
+                    page_url
+                )
+
+        # -----------------------------------------------------
+        # Aggregate findings
+        # -----------------------------------------------------
+
+        finding_number = 0
+
+        for title, bucket in grouped.items():
+
+            finding_number += 1
+
+            finding = dict(
+                bucket["finding"]
+            )
+
+            hit_pages = bucket["pages"]
+
+            original_id = finding.get(
+                "id",
+                skill_id[:2].upper(),
+            )
+
+            original_id = original_id.split("-")[0]
+
+            finding["id"] = (
+                f"{original_id}-AGG-{finding_number:03d}"
+            )
+
+            finding["evidence"] = (
+                f"{len(hit_pages)}/{pages_checked} pages checked "
+                f"show this issue "
+                f"(examples: {hit_pages[:3]}). "
+                f"{finding.get('evidence', '')}"
+            )
+
+            # -------------------------------------------------
+            # Severity bump for near-universal defects
+            # -------------------------------------------------
+
+            severity = finding.get(
+                "severity",
+                "low",
+            )
+
+            if (
+                severity != "info"
+                and pages_checked >= 3
+                and len(hit_pages) / pages_checked >= 0.8
+            ):
+
+                current_rank = SEVERITY_ORDER.get(
+                    severity,
+                    3,
+                )
+
+                bumped_rank = max(
+                    current_rank - 1,
+                    0,
+                )
+
+                reverse_severity = {
+                    value: key
+                    for key, value
+                    in SEVERITY_ORDER.items()
+                }
+
+                bumped_severity = reverse_severity[
+                    bumped_rank
+                ]
+
+                finding["severity"] = bumped_severity
+
+                suggested_action = finding.get(
+                    "suggested_action"
+                )
+
+                if isinstance(
+                    suggested_action,
+                    dict,
+                ):
+                    suggested_action[
+                        "priority"
+                    ] = bumped_severity
+
+            all_findings.append(
+                finding
+            )
+
+    # ---------------------------------------------------------
+    # 4. Sort findings
+    # ---------------------------------------------------------
+
+    all_findings.sort(
+        key=lambda finding: SEVERITY_ORDER.get(
+            finding.get(
+                "severity",
+                "low",
+            ),
+            3,
+        )
+    )
+
+    # ---------------------------------------------------------
+    # 5. Count severities
+    # ---------------------------------------------------------
+
+    counts = {
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+        "info": 0,
+    }
+
+    for finding in all_findings:
+
+        severity = finding.get(
+            "severity",
+            "low",
+        )
+
+        if severity in counts:
+            counts[severity] += 1
+
+    # ---------------------------------------------------------
+    # 6. Proactive suggestions
+    # ---------------------------------------------------------
+
+    proactive_suggestions = []
+
+    for finding in all_findings:
+
+        if not finding.get("proactive"):
+            continue
+
+        suggested_action = finding.get(
+            "suggested_action",
+            {},
+        )
+
+        proactive_suggestions.append(
+            {
+                "id": finding.get("id"),
+                "title": finding.get("title"),
+                "suggested_action": (
+                    suggested_action.get(
+                        "summary",
+                        "",
+                    )
+                    if isinstance(
+                        suggested_action,
+                        dict,
+                    )
+                    else ""
+                ),
+            }
+        )
+
+    # ---------------------------------------------------------
+    # 7. Site information
+    # ---------------------------------------------------------
+
+    parsed_url = up.urlparse(url)
+
+    site = (
+        parsed_url.netloc
+        or url
+    )
+
+    # ---------------------------------------------------------
+    # 8. Final report
+    # ---------------------------------------------------------
 
     report = {
         "site": site,
-        "audited_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+
+        "audited_at": (
+            datetime.now(
+                timezone.utc
+            ).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            )
+        ),
+
         "summary": {
+            "pages_crawled": len(pages),
             "total_findings": len(all_findings),
             "critical": counts["critical"],
             "high": counts["high"],
             "medium": counts["medium"],
             "low": counts["low"],
-            "pages_crawled": max_pages_crawled,
-            "total_words_analyzed": total_words_analyzed,
-            "sampled_urls": all_sampled_urls,
+            "proactive_suggestions": len(
+                proactive_suggestions
+            ),
         },
+
+        "pages_sampled": pages,
+
         "findings": all_findings,
+
+        "proactive_suggestions": (
+            proactive_suggestions
+        ),
+
         "checks_run": checks_run,
     }
+
     if check_errors:
-        report["check_errors"] = check_errors
+
+        report["check_errors"] = (
+            check_errors
+        )
+
+    # ---------------------------------------------------------
+    # 9. Write report
+    # ---------------------------------------------------------
 
     if output_path:
-        with open(output_path, "w") as f:
-            json.dump(report, f, indent=2)
+
+        with open(
+            output_path,
+            "w",
+            encoding="utf-8",
+        ) as report_file:
+
+            json.dump(
+                report,
+                report_file,
+                indent=2,
+                ensure_ascii=False,
+            )
 
     return report
 
 
-def main():
-    p = argparse.ArgumentParser(description="Run the full brand AI-readiness audit against a URL.")
-    p.add_argument("url", help="Website URL to audit, e.g. https://example.com")
-    p.add_argument("--output", default="audit_report.json", help="Path to write the JSON report")
-    p.add_argument("--search-results", default=None,
-                    help="Optional JSON file with agent-gathered web-search corroboration evidence")
-    p.add_argument("--max-links", type=int, default=8, help="Internal links sampled for breakage check")
-    p.add_argument("--timeout", type=int, default=15, help="HTTP request timeout in seconds")
-    args = p.parse_args()
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
 
-    if not args.url.startswith(("http://", "https://")):
-        args.url = "https://" + args.url
+def main():
+
+    parser = argparse.ArgumentParser(
+        description=(
+            "Run the full Brand AI Readiness audit "
+            "against a website."
+        )
+    )
+
+    parser.add_argument(
+        "url",
+        help=(
+            "Website URL to audit, "
+            "e.g. https://example.com"
+        ),
+    )
+
+    parser.add_argument(
+        "--output",
+        default="audit_report.json",
+        help=(
+            "Path to write the JSON report "
+            "(default: audit_report.json)"
+        ),
+    )
+
+    parser.add_argument(
+        "--search-results",
+        default=None,
+        help=(
+            "Optional JSON file containing "
+            "agent-gathered search corroboration."
+        ),
+    )
+
+    parser.add_argument(
+        "--max-links",
+        type=int,
+        default=8,
+        help=(
+            "Maximum internal links sampled by "
+            "the engagement check."
+        ),
+    )
+
+    parser.add_argument(
+        "--max-pages",
+        type=int,
+        default=50,
+        
+        help=(
+            "Maximum pages sampled for page-level checks."
+        ),
+    )
+
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=15,
+        help=(
+            "HTTP request timeout in seconds."
+        ),
+    )
+
+    args = parser.parse_args()
+
+    # ---------------------------------------------------------
+    # Normalise URL
+    # ---------------------------------------------------------
+
+    if not args.url.startswith(
+        (
+            "http://",
+            "https://",
+        )
+    ):
+        args.url = (
+            "https://"
+            + args.url
+        )
+
+    # ---------------------------------------------------------
+    # Validate numeric arguments
+    # ---------------------------------------------------------
+
+    if args.max_pages < 1:
+        parser.error(
+            "--max-pages must be at least 1"
+        )
+
+    if args.max_links < 1:
+        parser.error(
+            "--max-links must be at least 1"
+        )
+
+    if args.timeout < 1:
+        parser.error(
+            "--timeout must be at least 1"
+        )
+
+    # ---------------------------------------------------------
+    # Load search results
+    # ---------------------------------------------------------
 
     search_results = None
+
     if args.search_results:
-        with open(args.search_results) as f:
-            search_results = json.load(f)
+
+        with open(
+            args.search_results,
+            "r",
+            encoding="utf-8",
+        ) as search_file:
+
+            search_results = json.load(
+                search_file
+            )
+
+    # ---------------------------------------------------------
+    # Run audit
+    # ---------------------------------------------------------
 
     report = run_full_audit(
-        args.url, timeout=args.timeout, max_links=args.max_links,
-        search_results=search_results, output_path=args.output,
+        args.url,
+        timeout=args.timeout,
+        max_links=args.max_links,
+        max_pages=args.max_pages,
+        search_results=search_results,
+        output_path=args.output,
     )
-    print(json.dumps(report, indent=2))
-    print(f"\nReport written to {args.output}", file=sys.stderr)
+
+    # ---------------------------------------------------------
+    # Print report
+    # ---------------------------------------------------------
+
+    print(
+        json.dumps(
+            report,
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
+
+    print(
+        f"\nReport written to {args.output}",
+        file=sys.stderr,
+    )
 
 
 if __name__ == "__main__":
