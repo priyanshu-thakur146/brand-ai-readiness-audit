@@ -1,77 +1,38 @@
 {
-  "site": "linkedin.com",
-  "audited_at": "2026-09-03T06:57:19Z",
+  "site": "flipkart.com",
+  "audited_at": "2026-09-05T10:54:03Z",
   "summary": {
-    "total_findings": 13,
+    "total_findings": 9,
     "critical": 0,
     "high": 1,
-    "medium": 8,
-    "low": 4
+    "medium": 2,
+    "low": 6,
+    "pages_crawled": 1,
+    "total_words_analyzed": 3216,
+    "sampled_urls": [
+      "https://flipkart.com/"
+    ]
   },
   "findings": [
     {
-      "id": "SD-001",
-      "category": "discoverability",
-      "title": "No JSON-LD structured data on the page",
+      "id": "EN-002",
+      "category": "engagement",
+      "title": "Broken internal link(s) found",
       "severity": "high",
-      "evidence": "Zero <script type=\"application/ld+json\"> blocks found.",
+      "evidence": "8/8 sampled internal links are broken: [('https://flipkart.com/flights-travel-uhp-at-store?marketplace=FKT', 403), ('https://flipkart.com/searchsuggestion', 403), ('https://flipkart.com/account/login?ret=/', 403), ('https://flipkart.com/account/login?signup=true&ret=/', 403), ('https://flipkart.com/account/?rd=0&link=home_account', 403)]....",
       "suggested_action": {
-        "summary": "Add schema.org JSON-LD (Organization on every page at minimum; Product/Article/LocalBusiness/FAQPage where relevant) so assistants can extract facts with certainty instead of inferring them from prose.",
+        "summary": "Fix or remove broken internal links \u2014 each one is a dead end that ends a visitor's (or a browsing agent's) session on the spot.",
         "priority": "high"
-      }
-    },
-    {
-      "id": "CR-001",
-      "category": "discoverability",
-      "title": "No discoverable XML sitemap",
-      "severity": "medium",
-      "evidence": "/sitemap.xml returned status 200 and robots.txt has no Sitemap: line.",
-      "suggested_action": {
-        "summary": "Publish an XML sitemap (or sitemap index) covering canonical pages and reference it in robots.txt so crawlers can find and prioritize content efficiently.",
-        "priority": "medium"
       }
     },
     {
       "id": "CR-002",
       "category": "discoverability",
-      "title": "Thin visible text in raw HTML",
+      "title": "No discoverable XML sitemap",
       "severity": "medium",
-      "evidence": "Only ~23 words of visible text found in the raw HTML response.",
+      "evidence": "/sitemap.xml returned status 403 and robots.txt has no Sitemap: line.",
       "suggested_action": {
-        "summary": "Verify key facts (what the brand does, product details, pricing) are present as plain server-rendered text, not just implied by images or loaded asynchronously.",
-        "priority": "medium"
-      }
-    },
-    {
-      "id": "SD-002",
-      "category": "discoverability",
-      "title": "Missing meta description",
-      "severity": "medium",
-      "evidence": "No <meta name=\"description\"> content found.",
-      "suggested_action": {
-        "summary": "Add a concise (~150-160 char) meta description stating what the page/brand offers \u2014 assistants and search snippets draw on this.",
-        "priority": "medium"
-      }
-    },
-    {
-      "id": "FE-001",
-      "category": "discoverability",
-      "title": "No H1 heading",
-      "severity": "medium",
-      "evidence": "Page has zero <h1> elements.",
-      "suggested_action": {
-        "summary": "Add exactly one clear <h1> stating the page's core topic \u2014 it's the strongest single outline signal an extractor uses.",
-        "priority": "medium"
-      }
-    },
-    {
-      "id": "ED-001",
-      "category": "discoverability",
-      "title": "No Organization/LocalBusiness entity markup to anchor identity",
-      "severity": "medium",
-      "evidence": "No schema.org Organization or LocalBusiness JSON-LD block found.",
-      "suggested_action": {
-        "summary": "Add an Organization JSON-LD block with name, url, logo, and sameAs \u2014 without it there is no machine-readable anchor for 'who this brand is' at all.",
+        "summary": "Publish an XML sitemap (or sitemap index) covering canonical pages and reference it in robots.txt so crawlers can find and prioritize content efficiently.",
         "priority": "medium"
       }
     },
@@ -87,68 +48,68 @@
       }
     },
     {
-      "id": "EN-002",
-      "category": "engagement",
-      "title": "No clear call-to-action found",
-      "severity": "medium",
-      "evidence": "No button/link text matched common CTA phrasing (sign up, contact, buy, get started, book, subscribe, download, etc.).",
+      "id": "CR-001",
+      "category": "discoverability",
+      "title": "No robots.txt found",
+      "severity": "low",
+      "evidence": "GET /robots.txt returned status 403.",
       "suggested_action": {
-        "summary": "Add at least one prominent, specific call-to-action above the fold stating the next step you want a visitor to take.",
-        "priority": "medium"
+        "summary": "Add a robots.txt that explicitly allows crawling and points to the sitemap; its absence isn't fatal but removes a cheap, explicit signal of intent.",
+        "priority": "low"
       }
     },
     {
-      "id": "EN-003",
-      "category": "engagement",
-      "title": "No internal links found on homepage",
-      "severity": "medium",
-      "evidence": "Zero same-domain links found on the homepage.",
-      "suggested_action": {
-        "summary": "Link to key internal pages from the homepage so visitors have somewhere to go next.",
-        "priority": "medium"
-      }
-    },
-    {
-      "id": "SD-003",
+      "id": "SD-001",
       "category": "discoverability",
       "title": "Incomplete Open Graph tags",
       "severity": "low",
-      "evidence": "og:title present=False, og:description present=False.",
+      "evidence": "og:title present=True, og:description present=False.",
       "suggested_action": {
         "summary": "Add og:title, og:description, and og:image so link previews and summarization tools have a clean, authoritative source to quote.",
         "priority": "low"
       }
     },
     {
-      "id": "SD-004",
+      "id": "FE-001",
       "category": "discoverability",
-      "title": "No contact phone or hours found in plain text",
+      "title": "Multiple H1 headings",
       "severity": "low",
-      "evidence": "No phone-number or opening-hours pattern detected in visible text.",
+      "evidence": "Page has 2 <h1> elements.",
       "suggested_action": {
-        "summary": "If applicable to this business, state phone/hours as plain text and in LocalBusiness JSON-LD \u2014 assistants answering 'is X open now / what's their number' need this in extractable form.",
+        "summary": "Use a single <h1> per page and demote the rest to <h2>/<h3> to keep the outline unambiguous.",
         "priority": "low"
       }
     },
     {
       "id": "FR-001",
       "category": "discoverability",
-      "title": "No freshness/last-updated signal found",
-      "severity": "low",
-      "evidence": "No article:modified_time meta tag, visible 'last updated' text, or Last-Modified header was found.",
-      "suggested_action": {
-        "summary": "For time-sensitive pages (pricing, listings, events, docs) add a visible 'last updated' date and an article:modified_time meta tag so assistants can judge recency before repeating claims.",
-        "priority": "low"
-      }
-    },
-    {
-      "id": "FR-002",
-      "category": "discoverability",
       "title": "Corroboration research not performed for this run",
       "severity": "low",
       "evidence": "No --search-results input was supplied, so cross-source agreement for this brand's key claims was not evaluated.",
       "suggested_action": {
         "summary": "Have the calling agent web-search 3-5 of the page's key factual claims (founding date, HQ, pricing, leadership) and re-run this check with --search-results to score corroboration.",
+        "priority": "low"
+      }
+    },
+    {
+      "id": "PRO-001",
+      "category": "discoverability",
+      "title": "Proactive Opportunity: Add Speakable Specification for Voice AI Assistants",
+      "severity": "low",
+      "evidence": "Site contains substantial readable content (~3216 words analyzed), but lacks schema.org/Speakable specification.",
+      "suggested_action": {
+        "summary": "Add 'speakable' JSON-LD markup or CSS selector attributes pointing to your primary 1-2 sentence brand summary \u2014 this guides voice assistants (ChatGPT Voice, Siri, Google Assistant) to quote exact text.",
+        "priority": "low"
+      }
+    },
+    {
+      "id": "PRO-002",
+      "category": "discoverability",
+      "title": "Proactive Opportunity: Link Entity to Wikidata/Wikipedia via sameAs",
+      "severity": "low",
+      "evidence": "No official Wikidata or Wikipedia sameAs identity link detected in Organization markup for flipkart.com.",
+      "suggested_action": {
+        "summary": "Include official Wikidata and Wikipedia URLs inside the Organization sameAs JSON-LD array for 'flipkart.com' to eliminate entity ambiguity across LLM knowledge bases.",
         "priority": "low"
       }
     }

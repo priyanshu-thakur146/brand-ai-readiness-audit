@@ -195,8 +195,9 @@ def run_check(url, timeout=15):
             nid(), "Homepage unreachable", "critical", f"Request error fetching {url}: {e}",
             "Ensure the site resolves over HTTPS and responds without connection errors — an "
             "unreachable site is invisible to every crawler and AI fetcher.", "critical"))
+        return {"findings": findings, "pages_crawled": 1, "words_analyzed": 0}
 
-    return findings
+    return {"findings": findings, "pages_crawled": 1, "words_analyzed": word_count}
 
 
 if __name__ == "__main__":

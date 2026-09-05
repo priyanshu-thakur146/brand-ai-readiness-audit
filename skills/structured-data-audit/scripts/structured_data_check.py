@@ -3,6 +3,9 @@
 import sys
 import json
 import re
+import warnings
+from bs4 import XMLParsedAsHTMLWarning
+warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
 import requests
 from bs4 import BeautifulSoup
@@ -49,7 +52,7 @@ def run_check(url, timeout=15):
 
     soup = BeautifulSoup(r.text, "lxml")
 
-    # 1+2. JSON-LD
+    # 1+2. Parse JSON-LD on main page
     scripts = soup.find_all("script", attrs={"type": "application/ld+json"})
     valid_blocks = []
     invalid_count = 0
@@ -66,13 +69,59 @@ def run_check(url, timeout=15):
         except (json.JSONDecodeError, TypeError):
             invalid_count += 1
 
-    if not scripts:
+    # Extract and sample subpages in parallel
+    import urllib.parse as up
+    from concurrent.futures import ThreadPoolExecutor
+    parsed = up.urlparse(url)
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    
+    subpage_urls = []
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        full_url = up.urljoin(origin, href)
+        p = up.urlparse(full_url)
+        if p.netloc == parsed.netloc and p.path.strip("/") and p.path.strip("/") != parsed.path.strip("/"):
+            if full_url not in subpage_urls and not any(full_url.endswith(ext) for ext in [".png", ".jpg", ".pdf", ".css", ".js"]):
+                subpage_urls.append(full_url)
+                if len(subpage_urls) >= 5:
+                    break
+
+    subpage_soups = []
+    def _fetch_sub(u):
+        try:
+            resp = requests.get(u, headers={"User-Agent": UA}, timeout=min(timeout, 5))
+            if resp.status_code == 200:
+                return u, BeautifulSoup(resp.text, "lxml")
+        except Exception:
+            pass
+        return u, None
+
+    if subpage_urls:
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            results = list(executor.map(_fetch_sub, subpage_urls))
+            subpage_soups = [res for res in results if res[1] is not None]
+
+    total_pages_sampled = 1 + len(subpage_soups)
+    pages_with_jsonld = 1 if scripts else 0
+
+    for sub_url, sub_soup in subpage_soups:
+        sub_scripts = sub_soup.find_all("script", attrs={"type": "application/ld+json"})
+        if sub_scripts:
+            pages_with_jsonld += 1
+
+    # 1+2. JSON-LD
+    if not scripts and pages_with_jsonld == 0:
         findings.append(_finding(
-            nid(), "No JSON-LD structured data on the page", "high",
-            "Zero <script type=\"application/ld+json\"> blocks found.",
+            nid(), "No JSON-LD structured data across sampled pages", "high",
+            f"Crawled {total_pages_sampled} sampled pages ({url} + {len(subpage_soups)} internal subpages); 0/{total_pages_sampled} contain schema.org markup.",
             "Add schema.org JSON-LD (Organization on every page at minimum; Product/Article/"
             "LocalBusiness/FAQPage where relevant) so assistants can extract facts with certainty "
             "instead of inferring them from prose.", "high"))
+    elif not scripts:
+        findings.append(_finding(
+            nid(), "No JSON-LD structured data on homepage", "high",
+            f"Crawled {total_pages_sampled} sampled pages; {pages_with_jsonld}/{total_pages_sampled} pages contain schema.org markup, but homepage lacks JSON-LD.",
+            "Add schema.org JSON-LD (Organization at minimum) to the homepage.", "high"))
     else:
         if invalid_count:
             findings.append(_finding(
@@ -172,7 +221,8 @@ def run_check(url, timeout=15):
             "LocalBusiness JSON-LD — assistants answering 'is X open now / what's their number' "
             "need this in extractable form.", "low"))
 
-    return findings
+    sampled_urls = [url] + [sub_url for sub_url, sub_soup in subpage_soups]
+    return {"findings": findings, "pages_crawled": total_pages_sampled, "words_analyzed": len(text.split()), "sampled_urls": sampled_urls}
 
 
 if __name__ == "__main__":

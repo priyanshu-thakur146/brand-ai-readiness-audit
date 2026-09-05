@@ -42,9 +42,14 @@ def _load(skill_name, script_name):
 
 def _run_safely(check_id, fn, *args, **kwargs):
     try:
-        return fn(*args, **kwargs), None
+        res = fn(*args, **kwargs)
+        if isinstance(res, dict):
+            return res.get("findings", []), res.get("pages_crawled", 1), res.get("words_analyzed", 0), res.get("sampled_urls", []), None
+        elif isinstance(res, list):
+            return res, 1, 0, [], None
+        return [], 1, 0, [], None
     except Exception as e:  # noqa: BLE001 - deliberately broad so one bad check doesn't kill the audit
-        return [], str(e)
+        return [], 0, 0, [], str(e)
 
 
 def run_full_audit(url, timeout=15, max_links=8, search_results=None, output_path=None):
@@ -60,6 +65,9 @@ def run_full_audit(url, timeout=15, max_links=8, search_results=None, output_pat
     all_findings = []
     checks_run = []
     check_errors = []
+    max_pages_crawled = 1
+    total_words_analyzed = 0
+    all_sampled_urls = [url]
 
     checks = [
         ("crawl-render-audit", crawl_mod.run_check, {"timeout": timeout}),
@@ -73,8 +81,17 @@ def run_full_audit(url, timeout=15, max_links=8, search_results=None, output_pat
     ]
 
     for skill_id, fn, kwargs in checks:
-        findings, error = _run_safely(skill_id, fn, url, **kwargs)
+        findings, pages_count, words_count, sampled_urls, error = _run_safely(skill_id, fn, url, **kwargs)
         checks_run.append(skill_id)
+        if pages_count > max_pages_crawled:
+            max_pages_crawled = pages_count
+        if words_count > total_words_analyzed:
+            total_words_analyzed = words_count
+        if sampled_urls:
+            for s_url in sampled_urls:
+                if s_url not in all_sampled_urls:
+                    all_sampled_urls.append(s_url)
+
         if error:
             check_errors.append({"skill": skill_id, "error": error})
             all_findings.append({
@@ -92,6 +109,79 @@ def run_full_audit(url, timeout=15, max_links=8, search_results=None, output_pat
         else:
             all_findings.extend(findings)
 
+    site = up.urlparse(url).netloc or url
+
+    # Dynamic Proactive Recommendations Engine (based on actual website signals)
+    proactive_n = 0
+    def pro_id():
+        nonlocal proactive_n
+        proactive_n += 1
+        return f"PRO-{proactive_n:03d}"
+
+    # 1. Dynamic Breadcrumb Opportunity
+    deep_paths = [up.urlparse(u).path for u in all_sampled_urls if len(up.urlparse(u).path.strip("/").split("/")) >= 2]
+    has_breadcrumb_finding = any("breadcrumb" in f.get("title", "").lower() or "breadcrumb" in f.get("evidence", "").lower() for f in all_findings)
+    if deep_paths and not has_breadcrumb_finding:
+        sample_path = deep_paths[0]
+        all_findings.append({
+            "id": pro_id(),
+            "category": "discoverability",
+            "title": "Proactive Opportunity: Implement BreadcrumbList JSON-LD for Site Hierarchy",
+            "severity": "low",
+            "evidence": f"Deep subpages detected (e.g. '{sample_path}'), but no schema.org BreadcrumbList markup was found across {len(all_sampled_urls)} sampled URLs.",
+            "suggested_action": {
+                "summary": f"Add BreadcrumbList JSON-LD schema on subpages like '{sample_path}' — this establishes explicit site architecture relationships for crawlers and AI search agents.",
+                "priority": "low"
+            }
+        })
+
+    # 2. Dynamic Voice AI / Speakable Specification Opportunity
+    if total_words_analyzed > 300:
+        has_speakable = any("speakable" in f.get("evidence", "").lower() for f in all_findings)
+        if not has_speakable:
+            all_findings.append({
+                "id": pro_id(),
+                "category": "discoverability",
+                "title": "Proactive Opportunity: Add Speakable Specification for Voice AI Assistants",
+                "severity": "low",
+                "evidence": f"Site contains substantial readable content (~{total_words_analyzed} words analyzed), but lacks schema.org/Speakable specification.",
+                "suggested_action": {
+                    "summary": "Add 'speakable' JSON-LD markup or CSS selector attributes pointing to your primary 1-2 sentence brand summary — this guides voice assistants (ChatGPT Voice, Siri, Google Assistant) to quote exact text.",
+                    "priority": "low"
+                }
+            })
+
+    # 3. Dynamic Site Search Action Opportunity
+    if len(all_sampled_urls) >= 3:
+        has_search_action = any("searchaction" in f.get("evidence", "").lower() or "potentialaction" in f.get("evidence", "").lower() for f in all_findings)
+        if not has_search_action:
+            all_findings.append({
+                "id": pro_id(),
+                "category": "discoverability",
+                "title": "Proactive Opportunity: Add SearchAction PotentialAction Schema",
+                "severity": "low",
+                "evidence": f"Multi-page site structure detected ({len(all_sampled_urls)} sampled pages), but no WebSite SearchAction schema was found.",
+                "suggested_action": {
+                    "summary": f"Add WebSite schema with potentialAction (SearchAction) pointing to '{site}/search?q={{search_term_string}}' to enable direct AI in-site query delegation.",
+                    "priority": "low"
+                }
+            })
+
+    # 4. Dynamic Wikidata Identity Anchor Opportunity
+    has_wikidata = any("sameas" in f.get("title", "").lower() or "wikidata" in f.get("evidence", "").lower() for f in all_findings)
+    if not has_wikidata:
+        all_findings.append({
+            "id": pro_id(),
+            "category": "discoverability",
+            "title": "Proactive Opportunity: Link Entity to Wikidata/Wikipedia via sameAs",
+            "severity": "low",
+            "evidence": f"No official Wikidata or Wikipedia sameAs identity link detected in Organization markup for {site}.",
+            "suggested_action": {
+                "summary": f"Include official Wikidata and Wikipedia URLs inside the Organization sameAs JSON-LD array for '{site}' to eliminate entity ambiguity across LLM knowledge bases.",
+                "priority": "low"
+            }
+        })
+
     all_findings.sort(key=lambda f: SEVERITY_ORDER.get(f.get("severity", "low"), 3))
 
     counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
@@ -99,8 +189,6 @@ def run_full_audit(url, timeout=15, max_links=8, search_results=None, output_pat
         sev = f.get("severity", "low")
         if sev in counts:
             counts[sev] += 1
-
-    site = up.urlparse(url).netloc or url
 
     report = {
         "site": site,
@@ -111,6 +199,9 @@ def run_full_audit(url, timeout=15, max_links=8, search_results=None, output_pat
             "high": counts["high"],
             "medium": counts["medium"],
             "low": counts["low"],
+            "pages_crawled": max_pages_crawled,
+            "total_words_analyzed": total_words_analyzed,
+            "sampled_urls": all_sampled_urls,
         },
         "findings": all_findings,
         "checks_run": checks_run,

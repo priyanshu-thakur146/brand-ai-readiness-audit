@@ -124,7 +124,65 @@ def run_check(url, timeout=15):
             "Mirror the PDF's key facts as on-page HTML text (or provide an HTML version) — PDFs "
             "are crawlable but far less reliably parsed than plain HTML.", "low"))
 
-    # 4. boilerplate ratio (rough)
+    # 4. Table and list extractability
+    tables_without_th = []
+    for tbl in soup.find_all("table"):
+        if not tbl.find_all("th"):
+            tables_without_th.append(tbl)
+    if tables_without_th:
+        findings.append(_finding(
+            nid(), "Data tables missing <th> header markup", "medium",
+            f"{len(tables_without_th)} table(s) found without <th> header cells.",
+            "Add <th> elements to data tables so AI extractors can accurately pair data values with their column/row headers.", "medium"))
+
+    # 5. subpage extractability sampling
+    import urllib.parse as up
+    from concurrent.futures import ThreadPoolExecutor
+    parsed = up.urlparse(url)
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+
+    subpage_urls = []
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        full_url = up.urljoin(origin, href)
+        p = up.urlparse(full_url)
+        if p.netloc == parsed.netloc and p.path.strip("/") and p.path.strip("/") != parsed.path.strip("/"):
+            if full_url not in subpage_urls and not any(full_url.endswith(ext) for ext in [".png", ".jpg", ".pdf", ".css", ".js"]):
+                subpage_urls.append(full_url)
+                if len(subpage_urls) >= 4:
+                    break
+
+    if subpage_urls:
+        total_sub_imgs = 0
+        total_sub_no_alt = 0
+        def _check_sub_extractability(u):
+            try:
+                resp = requests.get(u, headers={"User-Agent": UA}, timeout=min(timeout, 5))
+                if resp.status_code == 200:
+                    sub_soup = BeautifulSoup(resp.text, "lxml")
+                    imgs = sub_soup.find_all("img")
+                    no_alt = [i for i in imgs if not (i.get("alt") or "").strip()]
+                    return len(imgs), len(no_alt)
+            except Exception:
+                pass
+            return 0, 0
+
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            res_list = list(executor.map(_check_sub_extractability, subpage_urls))
+            for c_tot, c_no in res_list:
+                total_sub_imgs += c_tot
+                total_sub_no_alt += c_no
+
+        all_imgs_tot = len(imgs) + total_sub_imgs
+        all_imgs_no_alt = len(imgs_no_alt) + total_sub_no_alt
+        if all_imgs_tot >= 5 and (all_imgs_no_alt / all_imgs_tot) > 0.4:
+            # Multi-page evidence finding for image extractability
+            findings.append(_finding(
+                nid(), "High ratio of uncaptioned images across sampled pages", "medium",
+                f"Crawled {1 + len(subpage_urls)} sampled pages; {all_imgs_no_alt}/{all_imgs_tot} images lack descriptive alt text.",
+                "Ensure informational images across all pages have descriptive alt text so facts in visual elements are machine-extractable.", "medium"))
+
+    # 6. boilerplate ratio (rough)
     soup2 = BeautifulSoup(r.text, "lxml")
     for s in soup2(["script", "style"]):
         s.extract()
