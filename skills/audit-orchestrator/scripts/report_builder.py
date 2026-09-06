@@ -104,6 +104,7 @@ def build_report(
     *,
     site: str = "",
     audited_at: str | None = None,
+    pages_sampled: list[str] | None = None,
 ) -> dict:
     """Build the final consolidated audit report."""
     # Normalise severity values
@@ -122,12 +123,18 @@ def build_report(
     findings = assign_ids(findings)
 
     # Build
-    return {
+    report = {
         "site": site,
         "audited_at": audited_at or datetime.now(timezone.utc).isoformat(),
         "summary": build_summary(findings),
         "findings": findings,
     }
+
+    if pages_sampled is not None:
+        report["pages_sampled"] = pages_sampled
+        report["summary"]["pages_crawled"] = len(pages_sampled)
+
+    return report
 
 
 # ---------------------------------------------------------------------------
@@ -135,10 +142,13 @@ def build_report(
 # ---------------------------------------------------------------------------
 
 
-def load_findings_from_files(paths: list[str]) -> tuple[list[dict], str]:
-    """Load findings from multiple JSON files.  Returns (findings, site)."""
+def load_findings_from_files(
+    paths: list[str],
+) -> tuple[list[dict], str, list[str]]:
+    """Load findings and sampled pages from multiple JSON files."""
     all_findings: list[dict] = []
     site = ""
+    pages_sampled: list[str] = []
     for path in paths:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -147,35 +157,43 @@ def load_findings_from_files(paths: list[str]) -> tuple[list[dict], str]:
             if not site and data.get("url"):
                 parsed = urlparse(data["url"])
                 site = parsed.netloc or data["url"]
+            for page in data.get("pages_sampled", []):
+                if page not in pages_sampled:
+                    pages_sampled.append(page)
         elif isinstance(data, list):
             all_findings.extend(data)
-    return all_findings, site
+    return all_findings, site, pages_sampled
 
 
-def load_findings_from_stdin() -> tuple[list[dict], str]:
+def load_findings_from_stdin() -> tuple[list[dict], str, list[str]]:
     """Load findings from stdin JSON."""
     raw = sys.stdin.read()
     data = json.loads(raw)
     if isinstance(data, dict):
         site = ""
+        pages_sampled = data.get("pages_sampled", [])
         if data.get("url"):
             parsed = urlparse(data["url"])
             site = parsed.netloc or data["url"]
-        return data.get("findings", []), site
+        return data.get("findings", []), site, pages_sampled
     elif isinstance(data, list):
         # Could be array of result objects or array of findings
         all_findings: list[dict] = []
         site = ""
+        pages_sampled: list[str] = []
         for item in data:
             if isinstance(item, dict) and "findings" in item:
                 all_findings.extend(item["findings"])
                 if not site and item.get("url"):
                     parsed = urlparse(item["url"])
                     site = parsed.netloc or item["url"]
+                for page in item.get("pages_sampled", []):
+                    if page not in pages_sampled:
+                        pages_sampled.append(page)
             elif isinstance(item, dict):
                 all_findings.append(item)
-        return all_findings, site
-    return [], ""
+        return all_findings, site, pages_sampled
+    return [], "", []
 
 
 # ---------------------------------------------------------------------------
@@ -259,11 +277,15 @@ def main() -> None:
         return
 
     if sys.argv[1] == "--stdin":
-        findings, site = load_findings_from_stdin()
+        findings, site, pages_sampled = load_findings_from_stdin()
     else:
-        findings, site = load_findings_from_files(sys.argv[1:])
+        findings, site, pages_sampled = load_findings_from_files(sys.argv[1:])
 
-    report = build_report(findings, site=site)
+    report = build_report(
+        findings,
+        site=site,
+        pages_sampled=pages_sampled or None,
+    )
     json.dump(report, sys.stdout, indent=2, ensure_ascii=False)
     print()
 

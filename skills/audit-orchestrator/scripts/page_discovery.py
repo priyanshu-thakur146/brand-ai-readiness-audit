@@ -2,7 +2,9 @@
 """
 page-discovery
 
-Finds a sample of internal pages to audit beyond the homepage.
+Finds internal pages to audit beyond the homepage.
+By default there is no page-count cap — discovery stops only when the
+caller's time limit is reached (or all reachable URLs are exhausted).
 
 Discovery strategy:
 1. Sitemap URLs discovered from robots.txt.
@@ -19,6 +21,7 @@ Public/static discovery only.
 
 import json
 import sys
+import time
 import urllib.parse as up
 from collections import deque
 from xml.etree import ElementTree as ET
@@ -388,13 +391,15 @@ def _collect_from_sitemaps(
     timeout,
     max_urls,
     max_sitemaps=50,
+    deadline=None,
 ):
     """
     Recursively process sitemap indexes.
 
     Stops when:
     - max_urls page candidates have been collected, or
-    - max_sitemaps sitemap files have been processed.
+    - max_sitemaps sitemap files have been processed, or
+    - the wall-clock deadline has been reached.
     """
 
     page_urls = []
@@ -409,6 +414,10 @@ def _collect_from_sitemaps(
     seen_pages = set()
 
     while sitemap_queue and len(visited_sitemaps) < max_sitemaps:
+
+        # Stop immediately if the caller's deadline has passed.
+        if deadline is not None and time.monotonic() >= deadline:
+            break
 
         sitemap_url = sitemap_queue.popleft()
 
@@ -491,7 +500,7 @@ def _collect_from_sitemaps(
     return page_urls
 
 
-def _from_sitemap(origin, hostname, timeout, max_urls):
+def _from_sitemap(origin, hostname, timeout, max_urls, deadline=None):
     """
     Discover sitemap URLs from:
 
@@ -538,6 +547,7 @@ def _from_sitemap(origin, hostname, timeout, max_urls):
         hostname=hostname,
         timeout=timeout,
         max_urls=max_urls,
+        deadline=deadline,
     )
 
 
@@ -614,25 +624,34 @@ def _from_homepage_links(homepage_url, homepage_html, hostname):
 def discover_pages(
     homepage_url,
     homepage_html,
-    max_pages=10,
+    max_pages=None,
     timeout=15,
+    deadline=None,
 ):
     """
-    Return up to max_pages unique same-domain URLs.
+    Return unique same-domain URLs discovered from the homepage.
 
     Homepage is always first.
+
+    max_pages=None (default) means no page-count cap — return every URL
+    discovered through sitemaps and homepage links.  Pass an integer to
+    impose an explicit upper bound.
 
     Compatible with run_audit.py:
         discover_pages(
             homepage_url,
             homepage_html,
-            max_pages=10,
+            max_pages=None,
             timeout=15
         )
     """
 
-    if max_pages <= 0:
+    if max_pages is not None and max_pages <= 0:
         return []
+
+    # None means "no cap" — use a large sentinel so numeric comparisons below
+    # still work without adding None-checks everywhere.
+    _limit = max_pages if max_pages is not None else 10_000_000
 
     homepage = _normalise_url(homepage_url)
 
@@ -658,7 +677,8 @@ def discover_pages(
         origin=origin,
         hostname=hostname,
         timeout=timeout,
-        max_urls=max_pages * 5,
+        max_urls=_limit * 5 if _limit < 2_000_000 else _limit,
+        deadline=deadline,
     )
 
     # ---------------------------------------------------------
@@ -680,6 +700,10 @@ def discover_pages(
 
     for candidate in candidates:
 
+        # Stop adding URLs if the deadline has passed.
+        if deadline is not None and time.monotonic() >= deadline:
+            break
+
         candidate = _normalise_url(candidate)
 
         if not candidate:
@@ -697,7 +721,7 @@ def discover_pages(
         seen.add(candidate)
         pages.append(candidate)
 
-        if len(pages) >= max_pages:
+        if len(pages) >= _limit:
             break
 
     return pages
@@ -722,7 +746,7 @@ def main():
         max_pages = (
             int(sys.argv[2])
             if len(sys.argv) > 2
-            else 10
+            else None  # unlimited by default
         )
     except ValueError:
         print(
