@@ -1,26 +1,26 @@
 ---
 name: freshness-corroboration-audit
-description: Checks whether the page's factual claims are current (not stale) and independently corroborated elsewhere on the web. Use this on pages making factual claims (pricing, specs, leadership, availability) that an assistant would need to trust before repeating — this is the skill that most needs the calling agent's own web-search tool, not just static page analysis.
+description: Audits content recency timestamps and evaluates cross-source web corroboration for key brand claims. Detects stale dates, missing publication/modified timestamps, and cross-checks factual claims against independent third-party sources (Crunchbase, Wikipedia, news outlets).
 license: MIT
 allowed-tools: [bash, python, web_search, web_fetch]
 ---
 
 # Freshness & Corroboration Audit
 
-## When to use
-Use after the other content checks. This corresponds to Appendix D of the brief: a fact repeated
-consistently across independent sources is trusted and repeated back; a fact that lives in only one
-place, or is visibly stale, is fragile.
+## Overview & Purpose
+AI models prioritize current information and assign higher confidence to claims repeated consistently across independent, authoritative websites. A brand claim that exists only on its own homepage without third-party corroboration is fragile; a claim with stale timestamps (e.g. outdated pricing or job openings) risks being omitted or flagged as unreliable by AI fetchers.
 
-## Inputs
-- `url` (required)
-- `timeout` (optional, default 15s)
-- `--search-results <file>` (optional): a JSON file the **calling agent** produces by web-searching
-  for the brand's key claims (e.g. `"<brand> pricing"`, `"<brand> founded"`, `"<brand> address"`)
-  and recording, for each claim, which independent domains state the same fact. This skill cannot
-  perform live web search itself in a plain script context — that's the calling agent's job, using
-  whatever search tool it has (this marketplace declares `web_search`/`web_fetch` as needed tools
-  for that reason). Format:
+The **Freshness & Corroboration Audit** skill assesses on-page recency signals and integrates agent web-search data to score independent corroboration across the web.
+
+## Key Technical Features
+- **On-Page Recency Detection**: Inspects `Last-Modified` HTTP response headers, `<meta property="article:modified_time">` tags, JSON-LD `dateModified` properties, and visible "Last updated" text strings.
+- **Content Staleness Risk Scoring**: Identifies dates that are implausibly old for time-sensitive pages (pricing, event listings, career openings).
+- **Cross-Source Corroboration Integration**: Accepts pre-gathered agent web-search evidence (`--search-results`) to verify how many independent domains corroborate key brand facts (founding date, headquarters, leadership, core offerings).
+
+## Input Parameters
+- `url` *(required)*: The target page URL to evaluate.
+- `timeout` *(optional)*: Maximum request timeout in seconds (defaults to 15s).
+- `--search-results <file>` *(optional)*: JSON evidence file provided by the calling agent containing claims and matching third-party domain references:
   ```json
   {
     "claims": [
@@ -30,18 +30,19 @@ place, or is visibly stale, is fragile.
   }
   ```
 
-## Procedure
-1. On the page itself, look for explicit freshness signals: `Last-Modified` HTTP header,
-   `<meta property="article:modified_time">`, and visible "Last updated" / "Published on" text.
-   Flag dates that are implausibly old for time-sensitive content (pricing, job listings, event
-   pages) or entirely absent from evergreen-looking claims.
-2. If the calling agent has performed corroboration research and supplied `--search-results`, score
-   each claim: 0 independent domains = fragile/unverifiable (flag), 1 = weakly supported, 2+ =
-   well-corroborated (no finding needed).
-3. If no `--search-results` file is supplied, still run step 1, and emit one informational finding
-   noting that corroboration research was not performed for this run (so the gap is visible in the
-   report rather than silently skipped).
-4. Emit findings via `scripts/freshness_check.py`.
+## Diagnostic Procedure
+1. **On-Page Timestamp Extraction**: Audits HTTP headers, meta tags, and visible DOM text for publication and modification dates.
+2. **Staleness Evaluation**: Compares timestamps against content type expectations, flagging outdated or missing recency signals.
+3. **Corroboration Scoring**: Evaluates claim support across independent domains (0 domains = fragile/unverifiable, 1 = weakly supported, 2+ = well-corroborated).
+4. **Informational Fallback**: If no search results file is provided, emits an explicit informational finding highlighting that cross-source web corroboration was not performed.
+5. **Execution**: Emits findings via `scripts/freshness_check.py`.
 
-## Output
-Findings with `id` prefixed `FR-`, following the shared schema.
+## Output Structure
+Emits findings prefixed with `FR-` adhering to the marketplace findings schema:
+- `id`: e.g., `FR-001`, `FR-002`
+- `category`: `"discoverability"`
+- `title`: Problem title (e.g., "No freshness/last-updated signal found")
+- `severity`: `"critical"`, `"high"`, `"medium"`, `"low"`, or `"info"`
+- `evidence`: Specific timestamp data or corroboration domain counts
+- `suggested_action`: Actionable guidance for structured metadata and external PR/citation building
+

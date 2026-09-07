@@ -1,57 +1,57 @@
 {
-  "site": "google.com",
-  "audited_at": "2026-09-06T12:19:21Z",
+  "site": "example.com",
+  "audited_at": "2026-09-07T11:28:21Z",
   "summary": {
-    "pages_crawled": 15,
-    "total_findings": 14,
+    "pages_crawled": 1,
+    "total_findings": 16,
     "critical": 0,
-    "high": 3,
-    "medium": 6,
-    "low": 4,
-    "proactive_suggestions": 1,
+    "high": 1,
+    "medium": 7,
+    "low": 5,
+    "proactive_suggestions": 3,
     "time_limit_seconds": 120,
-    "execution_time_seconds": 121.1
+    "execution_time_seconds": 17.88
   },
   "findings": [
-    {
-      "id": "EN-001",
-      "category": "engagement",
-      "title": "Missing/incorrect mobile viewport meta tag",
-      "severity": "high",
-      "evidence": "viewport meta present=False, content=None.",
-      "suggested_action": {
-        "summary": "Add <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"> — without it mobile visitors get a desktop-scaled layout and bounce quickly.",
-        "priority": "high"
-      }
-    },
     {
       "id": "SD-AGG-001",
       "category": "discoverability",
       "title": "No JSON-LD structured data on the page",
       "severity": "high",
-      "evidence": "1/15 pages checked show this issue (examples: ['https://google.com/']). Zero <script type=\"application/ld+json\"> blocks found.",
+      "evidence": "1/1 pages checked show this issue (examples: ['https://example.com/']). Zero <script type=\"application/ld+json\"> blocks found.",
       "suggested_action": {
         "summary": "Add schema.org JSON-LD (Organization on every page at minimum; Product/Article/LocalBusiness/FAQPage where relevant) so assistants can extract facts with certainty instead of inferring them from prose.",
         "priority": "high"
       }
     },
     {
-      "id": "SD-AGG-005",
+      "id": "CR-002",
       "category": "discoverability",
-      "title": "No Organization/LocalBusiness entity markup",
-      "severity": "high",
-      "evidence": "14/15 pages checked show this issue (examples: ['https://google.com/forms/about', 'https://google.com/intl/af/forms/about', 'https://google.com/intl/id/forms/about']). JSON-LD types present: ['faqpage'].",
+      "title": "No discoverable XML sitemap",
+      "severity": "medium",
+      "evidence": "/sitemap.xml returned status 404 and robots.txt has no Sitemap: line.",
       "suggested_action": {
-        "summary": "Add an Organization (or LocalBusiness) JSON-LD block with name, url, logo, and sameAs links — this is the anchor entity assistants use to identify the brand unambiguously (see entity-disambiguation-audit).",
-        "priority": "high"
+        "summary": "Publish an XML sitemap (or sitemap index) covering canonical pages and reference it in robots.txt so crawlers can find and prioritize content efficiently.",
+        "priority": "medium"
       }
     },
     {
-      "id": "CR-002",
+      "id": "CR-003",
+      "category": "discoverability",
+      "title": "Slow server response time",
+      "severity": "medium",
+      "evidence": "Homepage took 5.5s to respond (>3s).",
+      "suggested_action": {
+        "summary": "Improve TTFB (caching, CDN, server-side rendering) — slow responses cause crawlers and on-the-fly AI fetchers to time out or deprioritize the page.",
+        "priority": "medium"
+      }
+    },
+    {
+      "id": "CR-005",
       "category": "discoverability",
       "title": "Thin visible text in raw HTML",
       "severity": "medium",
-      "evidence": "Only ~33 words of visible text found in the raw HTML response.",
+      "evidence": "Only ~21 words of visible text found in HTML response (rendered with Playwright browser).",
       "suggested_action": {
         "summary": "Verify key facts (what the brand does, product details, pricing) are present as plain server-rendered text, not just implied by images or loaded asynchronously.",
         "priority": "medium"
@@ -69,7 +69,7 @@
       }
     },
     {
-      "id": "EN-002",
+      "id": "EN-001",
       "category": "engagement",
       "title": "No discoverable site navigation",
       "severity": "medium",
@@ -80,13 +80,13 @@
       }
     },
     {
-      "id": "EN-003",
+      "id": "EN-002",
       "category": "engagement",
-      "title": "No clear call-to-action found",
+      "title": "No internal links found on homepage",
       "severity": "medium",
-      "evidence": "No button/link text matched common CTA phrasing (sign up, contact, buy, get started, book, subscribe, download, etc.).",
+      "evidence": "Zero same-domain links found on the homepage.",
       "suggested_action": {
-        "summary": "Add at least one prominent, specific call-to-action above the fold stating the next step you want a visitor to take.",
+        "summary": "Link to key internal pages from the homepage so visitors have somewhere to go next.",
         "priority": "medium"
       }
     },
@@ -95,25 +95,25 @@
       "category": "discoverability",
       "title": "Missing meta description",
       "severity": "medium",
-      "evidence": "1/15 pages checked show this issue (examples: ['https://google.com/']). No <meta name=\"description\"> content found.",
+      "evidence": "1/1 pages checked show this issue (examples: ['https://example.com/']). No <meta name=\"description\"> content found.",
       "suggested_action": {
         "summary": "Add a concise (~150-160 char) meta description stating what the page/brand offers — assistants and search snippets draw on this.",
         "priority": "medium"
       }
     },
     {
-      "id": "SD-AGG-003",
+      "id": "CR-001",
       "category": "discoverability",
-      "title": "Incomplete Open Graph tags",
-      "severity": "medium",
-      "evidence": "15/15 pages checked show this issue (examples: ['https://google.com/', 'https://google.com/forms/about', 'https://google.com/intl/af/forms/about']). og:title present=False, og:description present=False.",
+      "title": "No robots.txt found",
+      "severity": "low",
+      "evidence": "GET /robots.txt returned status 404.",
       "suggested_action": {
-        "summary": "Add og:title, og:description, and og:image so link previews and summarization tools have a clean, authoritative source to quote.",
-        "priority": "medium"
+        "summary": "Add a robots.txt that explicitly allows crawling and points to the sitemap; its absence isn't fatal but removes a cheap, explicit signal of intent.",
+        "priority": "low"
       }
     },
     {
-      "id": "CR-001",
+      "id": "CR-004",
       "category": "discoverability",
       "title": "No canonical link tag",
       "severity": "low",
@@ -126,17 +126,6 @@
     {
       "id": "FR-001",
       "category": "discoverability",
-      "title": "No freshness/last-updated signal found",
-      "severity": "low",
-      "evidence": "No article:modified_time meta tag, visible 'last updated' text, or Last-Modified header was found.",
-      "suggested_action": {
-        "summary": "For time-sensitive pages (pricing, listings, events, docs) add a visible 'last updated' date and an article:modified_time meta tag so assistants can judge recency before repeating claims.",
-        "priority": "low"
-      }
-    },
-    {
-      "id": "FR-002",
-      "category": "discoverability",
       "title": "Corroboration research not performed for this run",
       "severity": "low",
       "evidence": "No --search-results input was supplied, so cross-source agreement for this brand's key claims was not evaluated.",
@@ -146,18 +135,29 @@
       }
     },
     {
+      "id": "SD-AGG-003",
+      "category": "discoverability",
+      "title": "Incomplete Open Graph tags",
+      "severity": "low",
+      "evidence": "1/1 pages checked show this issue (examples: ['https://example.com/']). og:title present=False, og:description present=False.",
+      "suggested_action": {
+        "summary": "Add og:title, og:description, and og:image so link previews and summarization tools have a clean, authoritative source to quote.",
+        "priority": "low"
+      }
+    },
+    {
       "id": "SD-AGG-004",
       "category": "discoverability",
       "title": "No contact phone or hours found in plain text",
       "severity": "low",
-      "evidence": "3/15 pages checked show this issue (examples: ['https://google.com/', 'https://google.com/intl/cs/forms/about', 'https://google.com/intl/da/forms/about']). No phone-number or opening-hours pattern detected in visible text.",
+      "evidence": "1/1 pages checked show this issue (examples: ['https://example.com/']). No phone-number or opening-hours pattern detected in visible text.",
       "suggested_action": {
         "summary": "If applicable to this business, state phone/hours as plain text and in LocalBusiness JSON-LD — assistants answering 'is X open now / what's their number' need this in extractable form.",
         "priority": "low"
       }
     },
     {
-      "id": "CR-P-003",
+      "id": "CR-P-006",
       "category": "discoverability",
       "title": "No llms.txt found (emerging AI-crawler convention)",
       "severity": "info",
@@ -167,13 +167,47 @@
         "priority": "info"
       },
       "proactive": true
+    },
+    {
+      "id": "FR-002",
+      "category": "discoverability",
+      "title": "Consider a machine-readable dateModified in JSON-LD",
+      "severity": "info",
+      "evidence": "A freshness signal was found (Last-Modified HTTP header, dated 2026-09-02), but it lives in a meta tag/visible text/HTTP header rather than structured data.",
+      "suggested_action": {
+        "summary": "In addition to what's already present, add 'dateModified' (and 'datePublished') to the page's Article/WebPage JSON-LD block — assistants that parse structured data directly get an unambiguous, typed timestamp instead of having to interpret text.",
+        "priority": "info"
+      },
+      "proactive": true
+    },
+    {
+      "id": "FE-AGG-001",
+      "category": "discoverability",
+      "title": "No <main> landmark element",
+      "severity": "info",
+      "evidence": "1/1 pages checked show this issue (examples: ['https://example.com/']). No <main> tag found; the primary-content region isn't explicitly marked.",
+      "suggested_action": {
+        "summary": "Wrap the core content in a <main> element (even if boilerplate ratio is currently fine) — it's a cheap, unambiguous signal for extractors and accessibility tools to weight the right region as the page's substance, and protects against boilerplate creeping in as the page grows.",
+        "priority": "info"
+      },
+      "proactive": true
     }
   ],
   "proactive_suggestions": [
     {
-      "id": "CR-P-003",
+      "id": "CR-P-006",
       "title": "No llms.txt found (emerging AI-crawler convention)",
       "suggested_action": "Consider publishing an llms.txt at the site root — a short, plain-text index of the site's key pages and facts written specifically for AI agents. It's not yet a universal standard, but costs little to add and gives assistants a direct, curated entry point instead of relying on inference."
+    },
+    {
+      "id": "FR-002",
+      "title": "Consider a machine-readable dateModified in JSON-LD",
+      "suggested_action": "In addition to what's already present, add 'dateModified' (and 'datePublished') to the page's Article/WebPage JSON-LD block — assistants that parse structured data directly get an unambiguous, typed timestamp instead of having to interpret text."
+    },
+    {
+      "id": "FE-AGG-001",
+      "title": "No <main> landmark element",
+      "suggested_action": "Wrap the core content in a <main> element (even if boilerplate ratio is currently fine) — it's a cheap, unambiguous signal for extractors and accessibility tools to weight the right region as the page's substance, and protects against boilerplate creeping in as the page grows."
     }
   ],
   "checks_run": [
@@ -181,33 +215,16 @@
     "freshness-corroboration-audit",
     "entity-disambiguation-audit",
     "engagement-audit",
-    "structured-data-audit"
+    "structured-data-audit",
+    "fact-extractability-audit"
   ],
   "pages_sampled": [
-    "https://google.com/",
-    "https://google.com/forms/about",
-    "https://google.com/intl/af/forms/about",
-    "https://google.com/intl/id/forms/about",
-    "https://google.com/intl/ms/forms/about",
-    "https://google.com/intl/ca/forms/about",
-    "https://google.com/intl/cs/forms/about",
-    "https://google.com/intl/da/forms/about",
-    "https://google.com/intl/de/forms/about",
-    "https://google.com/intl/et/forms/about",
-    "https://google.com/intl/en-gb/forms/about",
-    "https://google.com/intl/es/forms/about",
-    "https://google.com/intl/es-419/forms/about",
-    "https://google.com/intl/eu/forms/about",
-    "https://google.com/intl/fil/forms/about"
+    "https://example.com/"
   ],
   "check_errors": [
     {
-      "skill": "structured-data-audit",
-      "error": "120-second time limit reached; remaining pages were skipped."
-    },
-    {
-      "skill": "fact-extractability-audit",
-      "error": "120-second time limit reached; page-level check skipped."
+      "skill": "page-discovery",
+      "error": "Only the homepage was audited — no additional same-domain pages were discovered through robots.txt/sitemap.xml/sitemap indexes or homepage links. This audit does not execute JavaScript."
     }
   ]
 }

@@ -1,37 +1,40 @@
 ---
 name: entity-disambiguation-audit
-description: Checks whether the brand can be told apart from other entities that share its name — schema.org sameAs links tying the site to canonical external profiles (Wikipedia, Wikidata, LinkedIn, Crunchbase), and consistency of name/address/phone (NAP) across the page. Use this for any brand whose name is a common word, is short, or is shared with other companies/products, per Appendix D of the brief.
+description: Audits brand identity anchors to resolve name ambiguity risks. Checks for schema.org Organization sameAs authority links (Wikidata, Wikipedia, LinkedIn, Crunchbase), evaluates name-collision risks for short/generic brand names, and verifies Name-Address-Phone (NAP) consistency across page regions.
 license: MIT
 allowed-tools: [bash, python, web_search]
 ---
 
 # Entity Disambiguation Audit
 
-## When to use
-Use for any brand audit — ambiguity risk is worth checking even when not obviously a problem,
-since a false negative here (assuming the name is unique when it isn't) is easy to make. Appendix D:
-when several different things share a name, a system can mix them up unless there's something that
-clearly distinguishes one from the others.
+## Overview & Purpose
+When multiple companies, products, or dictionary words share a brand's name, AI assistants can easily hallucinate or mix up facts between unrelated entities. Establishing strong, unambiguous machine-readable entity anchors is critical to ensuring AI engines attribute facts to the correct organization.
 
-## Inputs
-- `url` (required)
-- `timeout` (optional, default 15s)
-- `--search-results <file>` (optional): if the calling agent has searched the brand name and found
-  multiple unrelated entities sharing it, pass that here to raise ambiguity-risk severity. Format:
-  `{"name_collision_count": 3, "examples": ["Acme Corp (security)", "Acme Inc (dance studio)"]}`
+The **Entity Disambiguation Audit** skill inspects structured authority links (`sameAs`) and checks for Name-Address-Phone (NAP) consistency to anchor identity across the web.
 
-## Procedure
-1. Extract the brand/organization name from JSON-LD (`Organization.name`) or `og:site_name`/`<title>`.
-2. Check for a `sameAs` array on the Organization entity linking to canonical external profiles
-   (Wikipedia, Wikidata, LinkedIn, Crunchbase, official social accounts). These are the strongest,
-   cheapest disambiguation signal — they tell an assistant "this site and that Wikidata entity are
-   the same thing."
-3. Heuristically flag names that are common dictionary words or very short (<=4 characters) as
-   higher ambiguity risk if no sameAs/disambiguating entity markup is present.
-4. Check basic NAP (name/address/phone) consistency between the header/footer and any Organization
-   or LocalBusiness JSON-LD — mismatches create a second, subtler ambiguity problem.
-5. If `--search-results` indicates real name collisions on the web, escalate severity.
-6. Emit findings via `scripts/entity_check.py`.
+## Key Technical Features
+- **Authority Profile Mapping (`sameAs`)**: Checks for `Organization.sameAs` arrays linking to canonical external authority sources (Wikidata, Wikipedia, LinkedIn, Crunchbase, official social channels) that explicitly link the site to its global Knowledge Graph entity.
+- **Generic / Short Name Ambiguity Detection**: Flags brand names that are dictionary words or short abbreviations (<=4 characters) when no explicit entity markup or `sameAs` links exist.
+- **NAP Consistency Audit**: Cross-checks brand Name, Address, and Phone details across header/footer text and JSON-LD markup to catch internal identity mismatches.
 
-## Output
-Findings with `id` prefixed `ED-`, following the shared schema.
+## Input Parameters
+- `url` *(required)*: The target page URL to evaluate.
+- `timeout` *(optional)*: Maximum request timeout in seconds (defaults to 15s).
+- `--search-results <file>` *(optional)*: Pre-gathered web search evidence detailing name collisions on search engines.
+
+## Diagnostic Procedure
+1. **Brand Identity Extraction**: Extracts official organization name from JSON-LD `Organization.name`, `og:site_name`, or `<title>`.
+2. **Authority Link Audit**: Verifies presence and validity of `sameAs` profile arrays.
+3. **Ambiguity Heuristic Evaluation**: Scores ambiguity risk based on name length, dictionary word overlap, and missing schema anchors.
+4. **NAP Consistency Check**: Audits contact details across page headers, footers, and structured data.
+5. **Execution**: Emits findings via `scripts/entity_check.py`.
+
+## Output Structure
+Emits findings prefixed with `ED-` adhering to the marketplace findings schema:
+- `id`: e.g., `ED-001`, `ED-002`
+- `category`: `"discoverability"`
+- `title`: Problem title (e.g., "No Organization/LocalBusiness entity markup to anchor identity")
+- `severity`: `"critical"`, `"high"`, `"medium"`, or `"low"`
+- `evidence`: Empirical diagnostic data regarding missing `sameAs` links or NAP mismatches
+- `suggested_action`: Direct recommendations for adding canonical schema.org authority links
+
