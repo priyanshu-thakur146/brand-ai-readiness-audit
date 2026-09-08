@@ -1,41 +1,70 @@
 ---
 name: crawl-render-audit
-description: Audits whether a website can be successfully reached, indexed, and parsed by AI crawlers and search engines. Diagnoses robots.txt access rules, XML sitemap presence, indexing directives (noindex / X-Robots-Tag), canonical links, server latency, and client-side JavaScript rendering gaps (React, Next.js, Vue, Gatsby SPAs). Powered by an adaptive dual-engine architecture featuring Playwright Chromium DOM rendering with zero-crash sandbox HTTP fallback.
+description: Audits whether a website can actually be reached, indexed, and read by AI crawlers and search engines. Checks robots.txt access rules for AI-agent user agents, XML sitemap discoverability, HTTP status/latency, noindex directives (meta + X-Robots-Tag), canonical link tags, and a JS render-gap heuristic that flags content trapped behind unrendered client-side JavaScript (SPA shells). Uses an adaptive dual-engine architecture — headless Playwright Chromium when available, with an automatic zero-crash fallback to static HTTP parsing. Use when diagnosing why a site is invisible to AI fetchers before any content-quality question even applies.
 license: MIT
 allowed-tools: [bash, python]
 ---
 
-# Crawl & Render Audit
+# `skills/crawl-render-audit/` — Crawlability & JS-Render-Gap Audit
 
-## Overview & Purpose
-For a brand to be discovered, summarized, or cited by AI assistants (such as ChatGPT, Claude, Perplexity, and Gemini), AI crawlers must be able to (1) access the website without blockages and (2) extract readable content from the initial server payload.
+> Marketplace: `brand-ai-readiness-audit` · Called by: `audit-orchestrator` (site-level check)
+> Script: `scripts/crawl_render_check.py`
 
-The **Crawl & Render Audit** skill evaluates these foundational access gates. It identifies technical blockages that render pages completely invisible to automated fetchers or trap content behind unrendered client-side JavaScript.
+## When to use
+Use this skill first, conceptually: per the Round-2 background (crawl → read → extract, in that
+order), if a crawler can't get in or can't read the page, nothing downstream — structured data,
+fact clarity, freshness — matters. Use this skill to answer "can an AI fetcher even see this
+site at all?" for a homepage or any single page.
 
-## Core Technical Features & Dual-Engine Architecture
-- **Playwright Headless Chromium Engine**: Automatically leverages Playwright when available to execute JavaScript, hydrate client-side DOMs (Single Page Applications like Next.js, React, Vue, Gatsby), and bypass anti-bot WAF challenges.
-- **Resilient Sandbox Fallback**: If Playwright is not installed or browser execution is restricted in a lightweight sandbox environment, the engine catches launch exceptions gracefully and falls back to static HTTP parsing with browser header emulation — guaranteeing 100% crash-free execution.
-- **JS Render Gap Detection**: Measures the difference between raw HTML visible text and post-execution DOM text, explicitly flagging SPA shell root elements (`<div id="__next">`, `<div id="root">`, `<div id="app">`, `___gatsby`) paired with thin text.
+## Inputs
+| Argument | Required | Description |
+|---|---|---|
+| `url` | yes | Target page or domain to evaluate. |
+| `timeout` | no | Max request/render timeout in seconds (default `15`). |
 
-## Input Parameters
-- `url` *(required)*: The target page or domain URL to evaluate.
-- `timeout` *(optional)*: Maximum request/render timeout in seconds (defaults to 15s).
+## Procedure (numbered, deterministic steps)
+1. **Robots accessibility** — fetch `/robots.txt`; parse `User-agent` blocks and flag a `critical`
+   finding if `Disallow: /` blocks `*` or a named AI agent (`GPTBot`, `ClaudeBot`,
+   `PerplexityBot`, `Google-Extended`, `Googlebot`). Missing/unreachable `robots.txt` is a `low`/
+   `medium` finding, not fatal on its own.
+2. **Sitemap discoverability** — check `Sitemap:` in `robots.txt` and `/sitemap.xml` directly;
+   flag `medium` if neither resolves to a valid `<urlset>`/`<sitemapindex>`.
+3. **Fetch the page with the dual-engine renderer** (see below) and check:
+   - HTTP status (`critical` if unreachable or ≥400),
+   - server latency (`medium` if TTFB > 3s — slow responses risk crawler timeouts/deprioritization),
+   - `X-Robots-Tag` response header and `<meta name="robots">` for `noindex` (`critical` either way),
+   - a self-referencing `<link rel="canonical">` (`low` if absent — avoids duplicate-content
+     ambiguity across parameterized URLs).
+4. **JS render-gap heuristic** — strip `<script>/<style>/<noscript>`, count visible words in the
+   raw response. If word count is very low (<15) or low (<50) **and** a known SPA shell root
+   (`#root`, `#__next`, `#app`, `#___gatsby`, `#app-root`) is present, flag `critical`: the brand's
+   real content only exists after client-side JavaScript runs, so a fetcher that doesn't execute
+   JS gets nothing. 50–150 words is flagged `medium` ("thin visible text") without assuming an SPA
+   is the cause. The finding records which rendering engine actually produced the word count and
+   whether a substantive `<noscript>` fallback exists as partial mitigation.
+5. **Proactive check (always runs, independent of any defect)** — probe `/llms.txt`, the emerging
+   plain-text index convention for AI agents; if absent, emit an `info`-severity proactive
+   suggestion (never counted as a "problem" in the summary) rather than a graded finding.
 
-## Diagnostic Procedure
-1. **Robots Accessibility**: Fetches `/robots.txt` and evaluates `Disallow` rules targeting general and AI-specific user agents (`*`, `GPTBot`, `ClaudeBot`, `PerplexityBot`, `Google-Extended`, `Googlebot`).
-2. **Sitemap Discovery**: Checks `/sitemap.xml` and `robots.txt` `Sitemap:` directives to ensure crawlers have a clear content index.
-3. **Response & Indexing Health**: Evaluates HTTP status codes, server latency (flagging TTFB > 3s), `X-Robots-Tag` headers, and `<meta name="robots" content="noindex">` directives.
-4. **Canonical Signal Validation**: Verifies self-referencing `<link rel="canonical">` tags to prevent authority fragmentation across parameterized URLs.
-5. **JavaScript Render Gap Analysis**: Strips non-content tags, measures visible word count, detects SPA root shells, and checks for `<noscript>` fallbacks.
-6. **Emerging AI Standards**: Scans for `/llms.txt` at the root directory to offer proactive guidance for emerging AI indexing standards.
+### Adaptive dual-engine rendering
+This is the skill's core engineering feature:
+1. **Engine 1 — headless Playwright Chromium.** If `playwright` is installed, launch headless
+   Chromium with a real browser `User-Agent`, navigate with `wait_until="domcontentloaded"`, and
+   read `page.content()` — i.e. the DOM *after* JavaScript has run, exactly what a JS-executing AI
+   crawler would see.
+2. **Engine 2 — static HTTP fallback.** If Playwright isn't installed, the binaries aren't
+   present in the sandbox, or the launch throws for any reason, the exception is caught silently
+   and the check falls back to a plain `requests.get()` (retried once with a browser `User-Agent`
+   if the first attempt looks blocked or truncated) and parses the raw HTML with BeautifulSoup —
+   i.e. exactly what a non-JS-executing crawler would see.
 
-## Output Structure
-Emits structured findings with unique `CR-` prefixes adhere to the marketplace finding schema:
-- `id`: e.g., `CR-001`, `CR-002` (or proactive `CR-P-001`)
-- `category`: `"discoverability"`
-- `title`: Concise diagnostic headline
-- `severity`: `"critical"`, `"high"`, `"medium"`, `"low"`, or `"info"`
-- `evidence`: Empirical data detailing response codes, word counts, or render engine used
-- `suggested_action`: Actionable, prioritized recommendation for technical teams
+Running both perspectives — "what a JS-aware fetcher sees" vs. "what a plain HTTP fetcher sees" —
+is what makes the render-gap check meaningful: the gap *between* those two views is the actual
+signal, and the dual-engine design means the check degrades gracefully (never crashes the audit)
+in a sandbox that lacks browser binaries while still using the more capable engine whenever it's
+available.
 
-
+## Output
+Findings prefixed `CR-` (or `CR-P-` for proactive), each with `id`, `category: "discoverability"`,
+`title`, `severity`, `evidence` (status codes, word counts, which render engine was used), and
+`suggested_action` with a `summary` and `priority`.

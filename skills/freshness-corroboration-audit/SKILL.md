@@ -1,48 +1,46 @@
 ---
 name: freshness-corroboration-audit
-description: Audits content recency timestamps and evaluates cross-source web corroboration for key brand claims. Detects stale dates, missing publication/modified timestamps, and cross-checks factual claims against independent third-party sources (Crunchbase, Wikipedia, news outlets).
+description: Audits content-recency signals (Last-Modified header, article:modified_time, JSON-LD dateModified, visible "last updated" text) and, when agent-gathered web-search evidence is supplied, scores how many independent third-party domains corroborate a brand's key claims. Detects stale or missing timestamps on time-sensitive content (pricing, job openings, events) and single-source, uncorroborated claims that an AI assistant is more likely to omit or flag as unreliable. Use when a site's facts look technically fine but still seem to be under-trusted or dropped by AI answers.
 license: MIT
 allowed-tools: [bash, python, web_search, web_fetch]
 ---
 
-# Freshness & Corroboration Audit
+# `skills/freshness-corroboration-audit/` — Recency & Cross-Source Trust Audit
 
-## Overview & Purpose
-AI models prioritize current information and assign higher confidence to claims repeated consistently across independent, authoritative websites. A brand claim that exists only on its own homepage without third-party corroboration is fragile; a claim with stale timestamps (e.g. outdated pricing or job openings) risks being omitted or flagged as unreliable by AI fetchers.
+## When to use
+Use this skill to check the two things Round-2's background material calls out as trust signals
+that live *outside* any single page's HTML quality: (1) is the content demonstrably current, and
+(2) does the wider web agree with what the brand says about itself? A claim that only exists on
+the brand's own homepage, with no independent corroboration and no visible update date, is
+fragile even if it's perfectly structured and perfectly readable.
 
-The **Freshness & Corroboration Audit** skill assesses on-page recency signals and integrates agent web-search data to score independent corroboration across the web.
+## Inputs
+| Argument | Required | Description |
+|---|---|---|
+| `url` | yes | Target page URL to evaluate. |
+| `timeout` | no | Max request timeout in seconds (default `15`). |
+| `search_results` | no | Agent-gathered web-search evidence, e.g. `{"claims": [{"claim": "founded in 2015", "corroborating_domains": ["crunchbase.com", "techcrunch.com"]}, {"claim": "HQ in Austin, TX", "corroborating_domains": []}]}`. |
 
-## Key Technical Features
-- **On-Page Recency Detection**: Inspects `Last-Modified` HTTP response headers, `<meta property="article:modified_time">` tags, JSON-LD `dateModified` properties, and visible "Last updated" text strings.
-- **Content Staleness Risk Scoring**: Identifies dates that are implausibly old for time-sensitive pages (pricing, event listings, career openings).
-- **Cross-Source Corroboration Integration**: Accepts pre-gathered agent web-search evidence (`--search-results`) to verify how many independent domains corroborate key brand facts (founding date, headquarters, leadership, core offerings).
+## Procedure (numbered, deterministic steps)
+1. **On-page timestamp extraction** — check the `Last-Modified` HTTP header, `<meta
+   property="article:modified_time">`, JSON-LD `dateModified`, and visible "last updated" text on
+   the page.
+2. **Staleness evaluation** — flag timestamps that are implausibly old for content that's supposed
+   to be time-sensitive (a pricing page, a jobs/careers listing, an events calendar). Missing
+   recency signals entirely on such pages is flagged even without a stale date to point to.
+3. **Corroboration scoring** — when `search_results` is supplied, score each claim by how many
+   independent domains corroborate it: 0 domains = fragile/unverifiable, 1 = weakly supported,
+   2+ = well-corroborated. This directly encodes the Round-2 principle that machines trust facts
+   repeated consistently across unrelated sources far more than a claim living in one place.
+4. **Transparent fallback** — if no `search_results` file is supplied, the skill does not silently
+   skip this half of its job: it emits an explicit `info`-level finding stating that cross-source
+   corroboration was not performed for this run, so the report never implies a check happened when
+   it didn't.
+5. **Emit findings** via `scripts/freshness_check.py` (a site-level check, run once against the
+   homepage by the orchestrator, not part of the per-page serial crawl).
 
-## Input Parameters
-- `url` *(required)*: The target page URL to evaluate.
-- `timeout` *(optional)*: Maximum request timeout in seconds (defaults to 15s).
-- `--search-results <file>` *(optional)*: JSON evidence file provided by the calling agent containing claims and matching third-party domain references:
-  ```json
-  {
-    "claims": [
-      {"claim": "founded in 2015", "corroborating_domains": ["crunchbase.com", "techcrunch.com"]},
-      {"claim": "HQ in Austin, TX", "corroborating_domains": []}
-    ]
-  }
-  ```
-
-## Diagnostic Procedure
-1. **On-Page Timestamp Extraction**: Audits HTTP headers, meta tags, and visible DOM text for publication and modification dates.
-2. **Staleness Evaluation**: Compares timestamps against content type expectations, flagging outdated or missing recency signals.
-3. **Corroboration Scoring**: Evaluates claim support across independent domains (0 domains = fragile/unverifiable, 1 = weakly supported, 2+ = well-corroborated).
-4. **Informational Fallback**: If no search results file is provided, emits an explicit informational finding highlighting that cross-source web corroboration was not performed.
-5. **Execution**: Emits findings via `scripts/freshness_check.py`.
-
-## Output Structure
-Emits findings prefixed with `FR-` adhering to the marketplace findings schema:
-- `id`: e.g., `FR-001`, `FR-002`
-- `category`: `"discoverability"`
-- `title`: Problem title (e.g., "No freshness/last-updated signal found")
-- `severity`: `"critical"`, `"high"`, `"medium"`, `"low"`, or `"info"`
-- `evidence`: Specific timestamp data or corroboration domain counts
-- `suggested_action`: Actionable guidance for structured metadata and external PR/citation building
-
+## Output
+Findings prefixed `FR-`, each with `id`, `category: "discoverability"`, `title`, `severity`
+(`critical`/`high`/`medium`/`low`/`info`), `evidence` (specific timestamps or corroboration domain
+counts), and `suggested_action` covering both structured-metadata fixes and external PR/citation
+building.

@@ -1,0 +1,13 @@
+# Optional: enables the Playwright/Chromium rendering engine in
+# crawl-render-audit for JS-heavy Single Page Applications.
+#
+# Not required to run the audit. If this file's install fails on a given
+# machine (unsupported platform, no network, no build tooling), or if
+# `playwright install chromium` is never run, crawl-render-audit silently
+# falls back to the static HTTP + BeautifulSoup engine and the audit still
+# completes normally.
+#
+# Install separately from requirements.txt on purpose, so a Playwright
+# install failure can never take down the packages every other check
+# actually depends on.
+playwright>=1.40.0

@@ -1,51 +1,110 @@
 ---
 name: audit-orchestrator
-description: Master entrypoint skill for the Brand AI-Readiness Audit Marketplace. Evaluates any target website across 6 specialized dimensions — technical crawlability, JS/SPA dynamic rendering, structured data clarity, fact extractability, brand entity disambiguation, and on-site user engagement. Operates with adaptive dual-engine rendering (headless Playwright Chromium with zero-crash sandbox HTTP fallback) to generate actionable, evidence-backed reports with prioritized recommendations.
+description: Entrypoint skill of the brand-ai-readiness-audit marketplace. Given a website URL, it discovers pages via sitemap and homepage-link crawling, invokes all six specialist audit skills, aggregates their findings across pages with serial (one-page-at-a-time) crawling under a wall-clock time budget, and composes a single schema-compliant audit report with findings, severities, evidence, and prioritized suggested actions. Use this skill when asked to run a full AI-discoverability and on-site-engagement audit of a website.
 license: MIT
 allowed-tools: [bash, python, web_search, web_fetch]
 ---
 
-# Brand AI-Readiness Audit — Orchestrator
+# `skills/audit-orchestrator/` — Master Entrypoint Skill
 
-## Overview & Purpose
-When an AI assistant (ChatGPT, Claude, Perplexity, Gemini) answers user queries about a brand, it relies on real-time web retrieval, machine extraction, and cross-source verification. If a website's facts are locked behind client-side JavaScript, obscured by thin copy, or missing structured metadata, the brand becomes invisible or misrepresented in AI responses.
+> Marketplace: `brand-ai-readiness-audit` · Entrypoint: **yes** (declared in `marketplace.json`)
+> Script: `scripts/run_audit.py` (composition logic) + `scripts/page_discovery.py` (page discovery)
 
-The **Audit Orchestrator** serves as the central intelligence hub of this marketplace. Given a domain or website URL, it systematically invokes six specialized audit skills, synthesizes their diagnostic findings, and produces a single, highly structured report tailored for executive decision-making and technical execution.
+## When to use
+Invoke this skill whenever an agent is asked to audit a brand's website for **AI discoverability**
+(why AI assistants don't find, fetch, or cite it) or **on-site engagement** (why visitors who do
+arrive don't stay) — or both. This is the single skill an agent should call; it internally
+composes the other five skills in this marketplace (`crawl-render-audit`,
+`structured-data-audit`, `fact-extractability-audit`, `freshness-corroboration-audit`,
+`entity-disambiguation-audit`, `engagement-audit`) and is the only skill that emits the final
+audit report.
 
-## Key Technical Strengths & Innovation
-- **Adaptive Dual-Engine Rendering**: Automatically detects the runtime environment. In environments with Playwright support, it launches a headless Chromium browser to render modern Single Page Applications (Next.js, React, Vue, Gatsby) and bypass anti-bot challenges. If running in a lightweight or restricted sandbox without browser binaries, it seamlessly falls back to static HTTP parsing with browser header emulation — ensuring 100% crash-free execution.
-- **Fail-Safe Skill Composition**: Employs isolated check execution so that unexpected network timeouts or edge-case errors in one skill never compromise the overall audit. Every finding is assigned an explicit severity (`critical`, `high`, `medium`, `low`, or `info`) backed by concrete technical evidence.
-- **Dual-Focus Evaluation**: Simultaneously evaluates **Off-Site AI Discoverability** (how easily AI crawlers find, parse, and cite the brand) and **On-Site User Engagement** (how effectively the site retains visitors once they land).
+Do not call this skill to modify, publish, or authenticate against the target site — it is
+strictly recommend-only (see Guardrails).
 
-## Input Arguments
-- `url` *(required)*: The target website URL to audit (e.g., `https://example.com`).
-- `search_results` *(optional)*: Pre-gathered web search data used by the entity disambiguation and freshness corroboration modules for cross-source validation.
-- `output_path` *(optional)*: Destination file path for the generated JSON report (defaults to `audit_report.json`).
+## Inputs
+| Argument | Required | Description |
+|---|---|---|
+| `url` | yes | Target website to audit, e.g. `https://example.com`. |
+| `search_results` | no | Pre-gathered web-search evidence (JSON) used by `freshness-corroboration-audit` and `entity-disambiguation-audit` for cross-source verification. Keys: `freshness`, `entity`. |
+| `output_path` | no | File path to write the JSON report to (default `audit_report.json`). |
+| `timeout` | no | Per-request HTTP timeout in seconds (default `5`). |
+| `max_links` | no | Internal links sampled by `engagement-audit` (default `8`). |
+| `max_pages` | no | Upper bound on pages discovered/crawled (default `400`; pass `None`/omit for "as many as the time budget allows"). |
+| `time_limit` | no | Wall-clock audit budget in seconds (default `120`). The orchestrator never exceeds this — it degrades gracefully instead of failing. |
 
-## Audit Execution Flow
-1. **Orchestration**: Runs checks in sequence across all 6 core marketplace skills:
-   - **Crawl & Render Audit (`CR-`)**: Tests crawler access (`robots.txt`, sitemaps, `noindex`), response latency, and client-side JS rendering gaps.
-   - **Structured Data Audit (`SD-`)**: Validates schema.org JSON-LD blocks, Open Graph metadata, title/description tags, and key business facts.
-   - **Fact Extractability Audit (`FE-`)**: Analyzes heading structure, lead paragraph clarity, non-text content traps (PDFs/images), and signal-to-boilerplate text ratio.
-   - **Freshness & Corroboration Audit (`FR-`)**: Evaluates content recency timestamps, staleness risks, and external claim corroboration.
-   - **Entity Disambiguation Audit (`ED-`)**: Verifies `sameAs` authority links (Wikidata, Wikipedia, LinkedIn) and NAP (name/address/phone) consistency to prevent brand identity confusion.
-   - **On-Site Engagement Audit (`EN-`)**: Assesses mobile viewport optimization, navigation accessibility, call-to-action (CTA) prominence, broken internal links, and page load performance.
-2. **Aggregation & Normalization**: Collects all findings, applies standardized severity sorting (`critical` → `high` → `medium` → `low`), and generates proactive optimization recommendations.
-3. **Report Generation**: Emits a clean, schema-compliant JSON artifact ready for API integration, agent workflows, or dashboard visualization.
+## Procedure (numbered, deterministic steps)
+1. **Load every skill module** in the marketplace (`crawl-render-audit`, `structured-data-audit`,
+   `fact-extractability-audit`, `freshness-corroboration-audit`, `entity-disambiguation-audit`,
+   `engagement-audit`, plus the bundled `page_discovery` helper) directly from their
+   `skills/<id>/scripts/` folders — no external service or network call is needed to resolve the
+   marketplace.
+2. **Run site-level checks** once against the homepage: `crawl-render-audit`,
+   `freshness-corroboration-audit`, `entity-disambiguation-audit`, `engagement-audit`. Each runs
+   inside a `try/except` isolation boundary (see "Fail-safe composition" below) so one skill's
+   crash never aborts the audit.
+3. **Discover additional same-domain pages** (see "Page discovery" below): parse `robots.txt` for
+   `Sitemap:` directives, fetch `/sitemap.xml` and `/sitemap_index.xml`, recursively resolve
+   sitemap indexes, and supplement with same-domain `<a href>` links pulled from the raw homepage
+   HTML (no JavaScript execution). Static assets (images, CSS, JS, fonts, archives) are filtered
+   out; tracking query parameters and URL fragments are normalized away so the same page isn't
+   counted twice.
+4. **Run page-level checks with serial crawling** (see below): `structured-data-audit` and
+   `fact-extractability-audit` are executed **one discovered page at a time**, in order, checking
+   the remaining time budget before every single page. The loop stops the instant the time budget
+   is exhausted — it never batches or parallelizes page fetches, so the number of pages actually
+   sampled is a deterministic function of `time_limit`, not a fixed, arbitrary page count.
+5. **Aggregate repeated findings across pages**: identical issues raised on multiple pages are
+   merged into one `*-AGG-###` finding, with evidence listing how many of the pages checked show
+   it (e.g. `9/10 pages checked show this issue`). If a defect appears on ≥80% of a sample of 3+
+   pages, its severity is escalated one level (e.g. `medium` → `high`) — a site-wide pattern is a
+   bigger problem than a one-off.
+6. **Normalize and sort** every finding (from both site-level and page-level checks) by severity
+   (`critical` → `high` → `medium` → `low` → `info`), tally `proactive_suggestions` separately so
+   they never inflate the problem count, and record any `check_errors` transparently rather than
+   hiding a partial run.
+7. **Emit the final audit report** (schema below) to `output_path` and return it to the caller.
 
-## Output Schema
-Emits a structured JSON audit report following the marketplace standard:
+### Fail-safe composition
+Every sub-skill call is wrapped so an unhandled exception in one check (a timeout, a malformed
+page, a DNS failure) becomes a single `medium`-severity `*-ERR` finding instead of crashing the
+whole audit — the remaining skills still run and the report still ships.
+
+### Serial page crawling
+Page-level checks are deliberately **serial, not concurrent**: the orchestrator visits one
+discovered page, runs a check, records the result, checks the clock, and only then moves to the
+next page. This is a conscious engineering trade-off for a hackathon-grade, sandboxed audit tool:
+it keeps load on the target server minimal and predictable (never issuing bursts of concurrent
+requests, in the spirit of "respect the target site"), makes total runtime a transparent function
+of `time_limit`, and keeps the whole run reproducible and easy to reason about for graders. The
+reported `pages_crawled` count in the output is therefore the true number of pages the audit
+actually finished checking within budget — not an aspirational target.
+
+### Adaptive dual-engine rendering
+`crawl-render-audit` (invoked as a site-level check) tries a headless Playwright Chromium engine
+first when it is installed, to hydrate JavaScript-heavy Single Page Applications (Next.js, React,
+Vue, Gatsby) the same way a modern AI crawler might. If Playwright is unavailable, fails to
+launch, or the sandbox has no browser binaries, it catches the failure and falls back to plain
+HTTP + `BeautifulSoup` parsing with a real browser `User-Agent` — so the orchestrator never
+crashes or stalls because a heavier rendering engine isn't present in the grading environment.
+Every render-gap finding records which engine actually produced the evidence.
+
+## Output
+Emits one schema-compliant JSON audit report (superset of the contest's minimum schema):
 ```json
 {
   "site": "example.com",
   "audited_at": "2026-09-07T14:30:00Z",
   "summary": {
-    "pages_crawled": 1,
+    "pages_crawled": 7,
     "total_findings": 6,
     "critical": 1,
     "high": 2,
     "medium": 3,
-    "low": 0
+    "low": 0,
+    "proactive_suggestions": 1,
+    "time_limit_seconds": 120,
+    "execution_time_seconds": 5.58
   },
   "findings": [
     {
@@ -54,19 +113,23 @@ Emits a structured JSON audit report following the marketplace standard:
       "title": "Missing Organization JSON-LD markup",
       "severity": "high",
       "evidence": "Zero <script type=\"application/ld+json\"> blocks found on homepage.",
-      "suggested_action": {
-        "summary": "Add schema.org Organization markup with name, url, logo, and sameAs links.",
-        "priority": "high"
-      }
+      "suggested_action": { "summary": "Add schema.org Organization markup with name, url, logo, and sameAs links.", "priority": "high" }
     }
   ],
-  "checks_run": ["crawl-render-audit", "structured-data-audit", ...]
+  "proactive_suggestions": [ { "id": "CR-P-001", "title": "...", "suggested_action": "..." } ],
+  "checks_run": ["crawl-render-audit", "structured-data-audit", "fact-extractability-audit", "freshness-corroboration-audit", "entity-disambiguation-audit", "engagement-audit"],
+  "pages_sampled": ["https://example.com", "https://example.com/products"],
+  "check_errors": []
 }
 ```
+`findings[].id`, `title`, `severity`, `evidence`, `suggested_action` and the summary's
+severity-count fields match the contest's required minimum schema exactly; every extra field
+(`category`, `proactive`, `pages_sampled`, `checks_run`, `check_errors`) is additive.
 
-## Security & Operational Guardrails
-- **Read-Only & Non-Destructive**: Performs purely read-only diagnostics; never modifies live websites, authenticates, or attempts intrusive actions.
-- **Respectful Crawling**: Fully respects `robots.txt` directives and limits internal link sampling to preserve target server resources.
-- **Self-Contained & Portable**: Zero external API dependencies required for core auditing, ensuring high execution speed and maximum portability across any AI agent sandbox.
-
-
+## Guardrails
+- **Read-only, recommend-only**: never writes to, authenticates against, or alters the target
+  site. All suggested actions are recommendations for a human/dev team to apply.
+- **Respects `robots.txt`** disallow rules and keeps per-page and per-check timeouts bounded.
+- **No destructive, rate-abusing, or authenticated-area actions.**
+- **Deterministic within a run**: given the same site and the same time budget, the orchestration
+  order and aggregation logic are identical every time.

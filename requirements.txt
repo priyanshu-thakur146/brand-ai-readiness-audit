@@ -1,7 +1,6 @@
+# Core dependencies — required for every skill, including the static-HTTP
+# fallback engine. Installing only this file is enough to run a full audit.
 requests>=2.31
 beautifulsoup4>=4.12
 lxml>=5.0
 python-dateutil>=2.8
-playwright>=1.40.0
-
-
