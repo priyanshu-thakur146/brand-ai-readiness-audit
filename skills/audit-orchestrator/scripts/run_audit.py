@@ -5,15 +5,10 @@ audit-orchestrator entrypoint.
 Runs every sub-skill in the brand-ai-readiness-audit marketplace against a
 target site and composes their findings into a single audit report.
 
-Limits:
-    - Maximum pages crawled: 400 (configurable via --max-pages)
-    - Maximum audit time: 200 s (configurable via --time-limit)
-    - Page-level checks run serially (one page at a time)
-    - No JavaScript rendering / Playwright / Selenium
 
 Usage:
     python run_audit.py <url>
-    python run_audit.py <url> --max-pages 400 --time-limit 200
+   
 """
 
 import argparse

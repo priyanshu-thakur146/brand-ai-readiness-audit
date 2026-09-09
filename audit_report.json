@@ -1,8 +1,8 @@
 {
   "site": "google.com",
-  "audited_at": "2026-09-08T09:15:43Z",
+  "audited_at": "2026-09-08T10:32:19Z",
   "summary": {
-    "pages_crawled": 19,
+    "pages_crawled": 20,
     "total_findings": 15,
     "critical": 0,
     "high": 3,
@@ -10,7 +10,7 @@
     "low": 4,
     "proactive_suggestions": 1,
     "time_limit_seconds": 120,
-    "execution_time_seconds": 121.5
+    "execution_time_seconds": 120.19
   },
   "findings": [
     {
@@ -29,7 +29,7 @@
       "category": "discoverability",
       "title": "No JSON-LD structured data on the page",
       "severity": "high",
-      "evidence": "1/19 pages checked show this issue (examples: ['https://google.com/']). Zero <script type=\"application/ld+json\"> blocks found.",
+      "evidence": "1/20 pages checked show this issue (examples: ['https://google.com/']). Zero <script type=\"application/ld+json\"> blocks found.",
       "suggested_action": {
         "summary": "Add schema.org JSON-LD (Organization on every page at minimum; Product/Article/LocalBusiness/FAQPage where relevant) so assistants can extract facts with certainty instead of inferring them from prose.",
         "priority": "high"
@@ -40,7 +40,7 @@
       "category": "discoverability",
       "title": "No Organization/LocalBusiness entity markup",
       "severity": "high",
-      "evidence": "18/19 pages checked show this issue (examples: ['https://google.com/forms/about', 'https://google.com/intl/af/forms/about', 'https://google.com/intl/id/forms/about']). JSON-LD types present: ['faqpage'].",
+      "evidence": "19/20 pages checked show this issue (examples: ['https://google.com/forms/about', 'https://google.com/intl/af/forms/about', 'https://google.com/intl/id/forms/about']). JSON-LD types present: ['faqpage'].",
       "suggested_action": {
         "summary": "Add an Organization (or LocalBusiness) JSON-LD block with name, url, logo, and sameAs links — this is the anchor entity assistants use to identify the brand unambiguously (see entity-disambiguation-audit).",
         "priority": "high"
@@ -51,7 +51,7 @@
       "category": "discoverability",
       "title": "Slow server response time",
       "severity": "medium",
-      "evidence": "Homepage took 10.1s to respond (>3s).",
+      "evidence": "Homepage took 5.9s to respond (>3s).",
       "suggested_action": {
         "summary": "Improve TTFB (caching, CDN, server-side rendering) — slow responses cause crawlers and on-the-fly AI fetchers to time out or deprioritize the page.",
         "priority": "medium"
@@ -62,7 +62,7 @@
       "category": "discoverability",
       "title": "Thin visible text in raw HTML",
       "severity": "medium",
-      "evidence": "Only ~33 words of visible text found in HTML response (analyzed using static HTTP parsing in sandbox).",
+      "evidence": "Only ~77 words of visible text found in HTML response (rendered with Playwright browser).",
       "suggested_action": {
         "summary": "Verify key facts (what the brand does, product details, pricing) are present as plain server-rendered text, not just implied by images or loaded asynchronously.",
         "priority": "medium"
@@ -106,7 +106,7 @@
       "category": "discoverability",
       "title": "Missing meta description",
       "severity": "medium",
-      "evidence": "1/19 pages checked show this issue (examples: ['https://google.com/']). No <meta name=\"description\"> content found.",
+      "evidence": "1/20 pages checked show this issue (examples: ['https://google.com/']). No <meta name=\"description\"> content found.",
       "suggested_action": {
         "summary": "Add a concise (~150-160 char) meta description stating what the page/brand offers — assistants and search snippets draw on this.",
         "priority": "medium"
@@ -117,7 +117,7 @@
       "category": "discoverability",
       "title": "Incomplete Open Graph tags",
       "severity": "medium",
-      "evidence": "19/19 pages checked show this issue (examples: ['https://google.com/', 'https://google.com/forms/about', 'https://google.com/intl/af/forms/about']). og:title present=False, og:description present=False.",
+      "evidence": "20/20 pages checked show this issue (examples: ['https://google.com/', 'https://google.com/forms/about', 'https://google.com/intl/af/forms/about']). og:title present=False, og:description present=False.",
       "suggested_action": {
         "summary": "Add og:title, og:description, and og:image so link previews and summarization tools have a clean, authoritative source to quote.",
         "priority": "medium"
@@ -161,7 +161,7 @@
       "category": "discoverability",
       "title": "No contact phone or hours found in plain text",
       "severity": "low",
-      "evidence": "3/19 pages checked show this issue (examples: ['https://google.com/', 'https://google.com/intl/cs/forms/about', 'https://google.com/intl/da/forms/about']). No phone-number or opening-hours pattern detected in visible text.",
+      "evidence": "3/20 pages checked show this issue (examples: ['https://google.com/', 'https://google.com/intl/cs/forms/about', 'https://google.com/intl/da/forms/about']). No phone-number or opening-hours pattern detected in visible text.",
       "suggested_action": {
         "summary": "If applicable to this business, state phone/hours as plain text and in LocalBusiness JSON-LD — assistants answering 'is X open now / what's their number' need this in extractable form.",
         "priority": "low"
@@ -213,7 +213,8 @@
     "https://google.com/intl/fr/forms/about",
     "https://google.com/intl/gl/forms/about",
     "https://google.com/intl/hr/forms/about",
-    "https://google.com/intl/zu/forms/about"
+    "https://google.com/intl/zu/forms/about",
+    "https://google.com/intl/is/forms/about"
   ],
   "check_errors": [
     {

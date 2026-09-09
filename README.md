@@ -243,13 +243,3 @@ skill already tolerates gracefully.
   standard; the marketplace manifest needs no external service to resolve, and no pre-trained
   model weights are bundled.
 
-## Submission checklist (per the Round 3 brief)
-
-- [x] `marketplace.json` at the root, listing all 7 skills with exactly one `entrypoint: true`.
-- [x] Every skill folder has a valid `SKILL.md` (YAML frontmatter: `name`, `description`,
-      `license`) plus `scripts/`.
-- [x] Decomposition into 7 focused skills (one concern each), composed cleanly by
-      `audit-orchestrator`.
-- [x] Output matches the required minimum audit-report schema (and extends it).
-- [x] Read-only, non-destructive, `robots.txt`-respecting by design.
-- [x] This README describes what each skill does and how the entrypoint composes them.
