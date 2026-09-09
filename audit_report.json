@@ -1,70 +1,70 @@
 {
-  "site": "google.com",
-  "audited_at": "2026-09-08T10:32:19Z",
+  "site": "github.com",
+  "audited_at": "2026-09-09T09:41:48Z",
   "summary": {
-    "pages_crawled": 20,
-    "total_findings": 15,
-    "critical": 0,
-    "high": 3,
-    "medium": 7,
-    "low": 4,
-    "proactive_suggestions": 1,
+    "pages_crawled": 23,
+    "total_findings": 14,
+    "critical": 3,
+    "high": 1,
+    "medium": 5,
+    "low": 3,
+    "proactive_suggestions": 2,
     "time_limit_seconds": 120,
-    "execution_time_seconds": 120.19
+    "execution_time_seconds": 121.62
   },
   "findings": [
     {
-      "id": "EN-001",
-      "category": "engagement",
-      "title": "Missing/incorrect mobile viewport meta tag",
-      "severity": "high",
-      "evidence": "viewport meta present=False, content=None.",
+      "id": "CR-002",
+      "category": "discoverability",
+      "title": "Homepage unreachable",
+      "severity": "critical",
+      "evidence": "Request error fetching https://github.com: HTTPSConnectionPool(host='github.com', port=443): Read timed out. (read timeout=5)",
       "suggested_action": {
-        "summary": "Add <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"> — without it mobile visitors get a desktop-scaled layout and bounce quickly.",
-        "priority": "high"
+        "summary": "Ensure the site resolves over HTTPS and responds without connection errors — an unreachable site is invisible to every crawler and AI fetcher.",
+        "priority": "critical"
       }
     },
     {
       "id": "SD-AGG-001",
       "category": "discoverability",
       "title": "No JSON-LD structured data on the page",
-      "severity": "high",
-      "evidence": "1/20 pages checked show this issue (examples: ['https://google.com/']). Zero <script type=\"application/ld+json\"> blocks found.",
+      "severity": "critical",
+      "evidence": "20/23 pages checked show this issue (examples: ['https://github.com/', 'https://github.com/login', 'https://github.com/features/copilot']). Zero <script type=\"application/ld+json\"> blocks found.",
       "suggested_action": {
         "summary": "Add schema.org JSON-LD (Organization on every page at minimum; Product/Article/LocalBusiness/FAQPage where relevant) so assistants can extract facts with certainty instead of inferring them from prose.",
-        "priority": "high"
+        "priority": "critical"
+      }
+    },
+    {
+      "id": "SD-AGG-007",
+      "category": "discoverability",
+      "title": "Page unreachable for structured-data check",
+      "severity": "critical",
+      "evidence": "3/23 pages checked show this issue (examples: ['https://github.com/solutions/use-case/app-modernization', 'https://github.com/solutions/use-case/devsecops', 'https://github.com/solutions/use-case/devops']). Request error: HTTPSConnectionPool(host='github.com', port=443): Max retries exceeded with url: /solutions/use-case/app-modernization (Caused by ConnectTimeoutError(<HTTPSConnection(host='github.com', port=443) at 0x1b348361d10>, 'Connection to github.com timed out. (connect timeout=5)'))",
+      "suggested_action": {
+        "summary": "Fix connectivity/availability before auditing markup.",
+        "priority": "critical"
       }
     },
     {
       "id": "SD-AGG-005",
       "category": "discoverability",
-      "title": "No Organization/LocalBusiness entity markup",
+      "title": "Missing <title> tag",
       "severity": "high",
-      "evidence": "19/20 pages checked show this issue (examples: ['https://google.com/forms/about', 'https://google.com/intl/af/forms/about', 'https://google.com/intl/id/forms/about']). JSON-LD types present: ['faqpage'].",
+      "evidence": "1/23 pages checked show this issue (examples: ['https://github.com/marketplace']). No non-empty <title> element found.",
       "suggested_action": {
-        "summary": "Add an Organization (or LocalBusiness) JSON-LD block with name, url, logo, and sameAs links — this is the anchor entity assistants use to identify the brand unambiguously (see entity-disambiguation-audit).",
+        "summary": "Add a descriptive, unique <title> to every page.",
         "priority": "high"
       }
     },
     {
       "id": "CR-001",
       "category": "discoverability",
-      "title": "Slow server response time",
+      "title": "No discoverable XML sitemap",
       "severity": "medium",
-      "evidence": "Homepage took 5.9s to respond (>3s).",
+      "evidence": "/sitemap.xml returned status 406 and robots.txt has no Sitemap: line.",
       "suggested_action": {
-        "summary": "Improve TTFB (caching, CDN, server-side rendering) — slow responses cause crawlers and on-the-fly AI fetchers to time out or deprioritize the page.",
-        "priority": "medium"
-      }
-    },
-    {
-      "id": "CR-003",
-      "category": "discoverability",
-      "title": "Thin visible text in raw HTML",
-      "severity": "medium",
-      "evidence": "Only ~77 words of visible text found in HTML response (rendered with Playwright browser).",
-      "suggested_action": {
-        "summary": "Verify key facts (what the brand does, product details, pricing) are present as plain server-rendered text, not just implied by images or loaded asynchronously.",
+        "summary": "Publish an XML sitemap (or sitemap index) covering canonical pages and reference it in robots.txt so crawlers can find and prioritize content efficiently.",
         "priority": "medium"
       }
     },
@@ -80,58 +80,36 @@
       }
     },
     {
-      "id": "EN-002",
+      "id": "EN-001",
       "category": "engagement",
-      "title": "No discoverable site navigation",
+      "title": "Slow homepage load time",
       "severity": "medium",
-      "evidence": "<nav>/role=navigation found=False with 0 link(s) inside.",
+      "evidence": "Initial response took 4.6s (>3s threshold).",
       "suggested_action": {
-        "summary": "Add a persistent navigation region with links to key sections (product, pricing, about, contact) so visitors — and agents browsing on a user's behalf — can orient and go deeper instead of leaving.",
-        "priority": "medium"
-      }
-    },
-    {
-      "id": "EN-003",
-      "category": "engagement",
-      "title": "No clear call-to-action found",
-      "severity": "medium",
-      "evidence": "No button/link text matched common CTA phrasing (sign up, contact, buy, get started, book, subscribe, download, etc.).",
-      "suggested_action": {
-        "summary": "Add at least one prominent, specific call-to-action above the fold stating the next step you want a visitor to take.",
+        "summary": "Improve server response time and reduce render-blocking resources — slow loads are one of the most common causes of immediate bounce.",
         "priority": "medium"
       }
     },
     {
       "id": "SD-AGG-002",
       "category": "discoverability",
+      "title": "No contact phone or hours found in plain text",
+      "severity": "medium",
+      "evidence": "19/23 pages checked show this issue (examples: ['https://github.com/', 'https://github.com/login', 'https://github.com/features/copilot']). No phone-number or opening-hours pattern detected in visible text.",
+      "suggested_action": {
+        "summary": "If applicable to this business, state phone/hours as plain text and in LocalBusiness JSON-LD — assistants answering 'is X open now / what's their number' need this in extractable form.",
+        "priority": "medium"
+      }
+    },
+    {
+      "id": "SD-AGG-006",
+      "category": "discoverability",
       "title": "Missing meta description",
       "severity": "medium",
-      "evidence": "1/20 pages checked show this issue (examples: ['https://google.com/']). No <meta name=\"description\"> content found.",
+      "evidence": "1/23 pages checked show this issue (examples: ['https://github.com/marketplace']). No <meta name=\"description\"> content found.",
       "suggested_action": {
         "summary": "Add a concise (~150-160 char) meta description stating what the page/brand offers — assistants and search snippets draw on this.",
         "priority": "medium"
-      }
-    },
-    {
-      "id": "SD-AGG-003",
-      "category": "discoverability",
-      "title": "Incomplete Open Graph tags",
-      "severity": "medium",
-      "evidence": "20/20 pages checked show this issue (examples: ['https://google.com/', 'https://google.com/forms/about', 'https://google.com/intl/af/forms/about']). og:title present=False, og:description present=False.",
-      "suggested_action": {
-        "summary": "Add og:title, og:description, and og:image so link previews and summarization tools have a clean, authoritative source to quote.",
-        "priority": "medium"
-      }
-    },
-    {
-      "id": "CR-002",
-      "category": "discoverability",
-      "title": "No canonical link tag",
-      "severity": "low",
-      "evidence": "No <link rel=\"canonical\"> found on the homepage.",
-      "suggested_action": {
-        "summary": "Add a self-referencing canonical tag on every indexable page to consolidate ranking signals and avoid duplicate-content ambiguity.",
-        "priority": "low"
       }
     },
     {
@@ -159,22 +137,34 @@
     {
       "id": "SD-AGG-004",
       "category": "discoverability",
-      "title": "No contact phone or hours found in plain text",
+      "title": "Incomplete Open Graph tags",
       "severity": "low",
-      "evidence": "3/20 pages checked show this issue (examples: ['https://google.com/', 'https://google.com/intl/cs/forms/about', 'https://google.com/intl/da/forms/about']). No phone-number or opening-hours pattern detected in visible text.",
+      "evidence": "4/23 pages checked show this issue (examples: ['https://github.com/security/advanced-security/code-security', 'https://github.com/security/advanced-security/secret-protection', 'https://github.com/marketplace']). og:title present=True, og:description present=False.",
       "suggested_action": {
-        "summary": "If applicable to this business, state phone/hours as plain text and in LocalBusiness JSON-LD — assistants answering 'is X open now / what's their number' need this in extractable form.",
+        "summary": "Add og:title, og:description, and og:image so link previews and summarization tools have a clean, authoritative source to quote.",
         "priority": "low"
       }
     },
     {
-      "id": "CR-P-004",
-      "category": "discoverability",
-      "title": "No llms.txt found (emerging AI-crawler convention)",
+      "id": "EN-002",
+      "category": "engagement",
+      "title": "No breadcrumb navigation detected",
       "severity": "info",
-      "evidence": "GET /llms.txt returned status 404.",
+      "evidence": "Primary navigation is present and populated, but no breadcrumb trail (aria-label='breadcrumb' or BreadcrumbList schema) was found.",
       "suggested_action": {
-        "summary": "Consider publishing an llms.txt at the site root — a short, plain-text index of the site's key pages and facts written specifically for AI agents. It's not yet a universal standard, but costs little to add and gives assistants a direct, curated entry point instead of relying on inference.",
+        "summary": "On top of existing navigation, add a breadcrumb trail (with BreadcrumbList JSON-LD) on deeper pages — it helps both visitors and browsing agents orient within the site hierarchy, and gives assistants a clean structural signal for how pages relate.",
+        "priority": "info"
+      },
+      "proactive": true
+    },
+    {
+      "id": "SD-AGG-003",
+      "category": "discoverability",
+      "title": "FAQ-shaped content found without FAQPage schema",
+      "severity": "info",
+      "evidence": "11/23 pages checked show this issue (examples: ['https://github.com/features/copilot', 'https://github.com/features/codespaces', 'https://github.com/features/issues']). 74 question-style heading(s) detected (e.g. ['What is GitHub Copilot?', 'Who is eligible to access GitHub Copilot for free?']) but no FAQPage JSON-LD present.",
+      "suggested_action": {
+        "summary": "Mark this content up as FAQPage schema (question + acceptedAnswer pairs). It's a low-effort addition that lets assistants extract and quote Q&A pairs directly, and is exactly the kind of content AI answer engines prefer to cite verbatim.",
         "priority": "info"
       },
       "proactive": true
@@ -182,9 +172,14 @@
   ],
   "proactive_suggestions": [
     {
-      "id": "CR-P-004",
-      "title": "No llms.txt found (emerging AI-crawler convention)",
-      "suggested_action": "Consider publishing an llms.txt at the site root — a short, plain-text index of the site's key pages and facts written specifically for AI agents. It's not yet a universal standard, but costs little to add and gives assistants a direct, curated entry point instead of relying on inference."
+      "id": "EN-002",
+      "title": "No breadcrumb navigation detected",
+      "suggested_action": "On top of existing navigation, add a breadcrumb trail (with BreadcrumbList JSON-LD) on deeper pages — it helps both visitors and browsing agents orient within the site hierarchy, and gives assistants a clean structural signal for how pages relate."
+    },
+    {
+      "id": "SD-AGG-003",
+      "title": "FAQ-shaped content found without FAQPage schema",
+      "suggested_action": "Mark this content up as FAQPage schema (question + acceptedAnswer pairs). It's a low-effort addition that lets assistants extract and quote Q&A pairs directly, and is exactly the kind of content AI answer engines prefer to cite verbatim."
     }
   ],
   "checks_run": [
@@ -195,26 +190,29 @@
     "structured-data-audit"
   ],
   "pages_sampled": [
-    "https://google.com/",
-    "https://google.com/forms/about",
-    "https://google.com/intl/af/forms/about",
-    "https://google.com/intl/id/forms/about",
-    "https://google.com/intl/ms/forms/about",
-    "https://google.com/intl/ca/forms/about",
-    "https://google.com/intl/cs/forms/about",
-    "https://google.com/intl/da/forms/about",
-    "https://google.com/intl/de/forms/about",
-    "https://google.com/intl/et/forms/about",
-    "https://google.com/intl/en-gb/forms/about",
-    "https://google.com/intl/es/forms/about",
-    "https://google.com/intl/es-419/forms/about",
-    "https://google.com/intl/eu/forms/about",
-    "https://google.com/intl/fil/forms/about",
-    "https://google.com/intl/fr/forms/about",
-    "https://google.com/intl/gl/forms/about",
-    "https://google.com/intl/hr/forms/about",
-    "https://google.com/intl/zu/forms/about",
-    "https://google.com/intl/is/forms/about"
+    "https://github.com/",
+    "https://github.com/login",
+    "https://github.com/features/copilot",
+    "https://github.com/features/ai/github-app",
+    "https://github.com/mcp",
+    "https://github.com/features/actions",
+    "https://github.com/features/codespaces",
+    "https://github.com/features/issues",
+    "https://github.com/features/code-review",
+    "https://github.com/features/code-quality",
+    "https://github.com/security/advanced-security",
+    "https://github.com/security/advanced-security/code-security",
+    "https://github.com/security/advanced-security/secret-protection",
+    "https://github.com/why-github",
+    "https://github.com/marketplace",
+    "https://github.com/features",
+    "https://github.com/enterprise",
+    "https://github.com/team",
+    "https://github.com/enterprise/startups",
+    "https://github.com/solutions/industry/nonprofits",
+    "https://github.com/solutions/use-case/app-modernization",
+    "https://github.com/solutions/use-case/devsecops",
+    "https://github.com/solutions/use-case/devops"
   ],
   "check_errors": [
     {
